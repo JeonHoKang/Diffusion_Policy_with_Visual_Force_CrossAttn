@@ -82,11 +82,11 @@ class EvaluatePushT:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/checkpoint_100.pth"
-            #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
-            #   if not os.path.isfile(ckpt_path):
-            #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
-            #       gdown.download(id=id, output=ckpt_path, quiet=False)
+            # ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/checkpoint_100.pth"
+            ckpt_path = "pusht_vision_100ep.ckpt"
+            if not os.path.isfile(ckpt_path):
+                id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
+                gdown.download(id=id, output=ckpt_path, quiet=False)
 
             state_dict = torch.load(ckpt_path, map_location='cuda')
             #   noise_pred_net.load_state_dict(checkpoint['model_state_dict'])
@@ -208,7 +208,7 @@ def main():
     eval_pusht = EvaluatePushT(max_steps)
     imgs = eval_pusht.inference()
     height, width, layers = imgs[0].shape
-    video = cv2.VideoWriter('/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/vis.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 15, (width, height))
+    video = cv2.VideoWriter('/home/lm-2023/playback_pose/src/Diffusion_Policy_ICRA/vis_PUSHT.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 15, (width, height))
 
     for img in imgs:
         video.write(np.uint8(img))

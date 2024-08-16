@@ -282,7 +282,7 @@ class DiffusionPolicy:
 
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
-        vision_encoder = train_utils().get_resnet('resnet34')
+        vision_encoder = train_utils().get_resnet('resnet18')
         # Define Second vision encoder
 
 
