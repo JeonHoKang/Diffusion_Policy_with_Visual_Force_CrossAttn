@@ -8,4 +8,4 @@ Those are for PushTEnv demonstration.
 
 All  **Real** tages are for real robot implementation
 
-However, [data_util.py](data.py) is shared amongst them.
+However, [data_util.py](git@github.com:JeonHoKang/Diffusion_Policy_ICRA.git/data.py) is shared amongst them.
