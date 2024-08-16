@@ -1,0 +1,5 @@
+__pycache__/
+
+*.zip
+*.mp4
+*checkpoints*
