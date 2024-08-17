@@ -277,7 +277,7 @@ dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_IC
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
-    def __init__(self):
+    def __init__(self, train=True):
 
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
@@ -306,28 +306,31 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
+        if train:
+            # create dataset from file
+            dataset = RealRobotDataSet(
+                dataset_path=dataset_path,
+                pred_horizon=pred_horizon,
+                obs_horizon=obs_horizon,
+                action_horizon=action_horizon
+            )
+            # save training data statistics (min, max) for each dim
+            stats = dataset.stats
 
-        # create dataset from file
-        dataset = RealRobotDataSet(
-            dataset_path=dataset_path,
-            pred_horizon=pred_horizon,
-            obs_horizon=obs_horizon,
-            action_horizon=action_horizon
-        )
-        # save training data statistics (min, max) for each dim
-        stats = dataset.stats
-
-        # create dataloader
-        dataloader = torch.utils.data.DataLoader(
-            dataset,
-            batch_size=12,
-            num_workers=4,
-            shuffle=True,
-            # accelerate cpu-gpu transfer
-            pin_memory=True,
-            # don't kill worker process afte each epoch
-            persistent_workers=True
-        )
+            # create dataloader
+            dataloader = torch.utils.data.DataLoader(
+                dataset,
+                batch_size=12,
+                num_workers=4,
+                shuffle=True,
+                # accelerate cpu-gpu transfer
+                pin_memory=True,
+                # don't kill worker process afte each epoch
+                persistent_workers=True
+            )
+            self.batch = batch
+            self.dataloader = dataloader
+            self.stats = stats
 
         #### For debugging purposes uncomment
         # import matplotlib.pyplot as plt
@@ -360,11 +363,11 @@ class DiffusionPolicy_Real:
         ######### End ########
 
         
-        # visualize data in batch
-        batch = next(iter(dataloader))
-        print("batch['image'].shape:", batch['image'].shape)
-        print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
-        print("batch['action'].shape", batch['action'].shape)
+            # visualize data in batch
+            batch = next(iter(dataloader))
+            print("batch['image'].shape:", batch['image'].shape)
+            print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
+            print("batch['action'].shape", batch['action'].shape)
 
         # create network object
         noise_pred_net = ConditionalUnet1D(
@@ -396,9 +399,6 @@ class DiffusionPolicy_Real:
         self.nets = nets
         self.noise_scheduler = noise_scheduler
         self.num_diffusion_iters = num_diffusion_iters
-        self.batch = batch
-        self.dataloader = dataloader
-        self.stats = stats
         self.obs_horizon = obs_horizon
         self.obs_dim = obs_dim
         self.vision_encoder = vision_encoder

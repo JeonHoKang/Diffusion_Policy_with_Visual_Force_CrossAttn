@@ -182,8 +182,8 @@ class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
     def __init__(self, max_steps):
-        # TODO: 
-        diffusion = DiffusionPolicy_Real()
+
+        diffusion = DiffusionPolicy_Real(train=False)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # ResNet18 has output dim of 512
