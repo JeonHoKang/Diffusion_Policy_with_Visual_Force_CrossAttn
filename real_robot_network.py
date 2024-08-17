@@ -268,15 +268,15 @@ class ConditionalUnet1D(nn.Module):
 
 
 # download demonstration data from Google Drive
-dataset_path = "pusht_cchi_v7_replay.zarr.zip"
-if not os.path.isfile(dataset_path):
-    id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
-    gdown.download(id=id, output=dataset_path, quiet=False)
+# dataset_path = "pusht_cchi_v7_replay.zarr.zip"
+# if not os.path.isfile(dataset_path):
+#     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
+#     gdown.download(id=id, output=dataset_path, quiet=False)
 
-
+dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/IU_dataset.zarr.zip"
 
 #@markdown ### **Network Demo**
-class DiffusionPolicy_Real:
+class DiffusionPolicy_Real:     
     def __init__(self):
 
         # construct ResNet18 encoder
@@ -291,8 +291,8 @@ class DiffusionPolicy_Real:
         # performance will tank if you forget to do this!
         vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
         vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
-        # ResNet18 has output dim of 512 
-        vision_feature_dim = 512
+        # ResNet18 has output dim of 512 X 2 because two views
+        vision_feature_dim = 1024
         # agent_pos is six (x,y,z, roll, pitch, yaw) dimensional
         lowdim_obs_dim = 6
         # observation feature has 514 dims in total per step
@@ -320,7 +320,7 @@ class DiffusionPolicy_Real:
         # create dataloader
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=64,
+            batch_size=12,
             num_workers=4,
             shuffle=True,
             # accelerate cpu-gpu transfer

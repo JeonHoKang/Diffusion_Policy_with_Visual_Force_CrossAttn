@@ -186,9 +186,9 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         dataset_root = zarr.open(dataset_path, 'r')
 
         # float32, [0,1], (N,96,96,3)
-        train_image_data = dataset_root['data']['img'][:]
+        train_image_data = dataset_root['data']['images_A'][:]
         train_image_data = np.moveaxis(train_image_data, -1,1)
-        train_image_data_second_view = dataset_root['data']['img2'][:]
+        train_image_data_second_view = dataset_root['data']['images_B'][:]
         train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
         # (N,3,96,96)
         # (N, D)
@@ -244,6 +244,6 @@ class RealRobotDataSet(torch.utils.data.Dataset):
 
         # discard unused observations
         nsample['image'] = nsample['image'][:self.obs_horizon,:]
-        nsample['image2'] = nsample['iamge'][:self.obs_horizon,:]
+        nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
         nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
         return nsample
