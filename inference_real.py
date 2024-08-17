@@ -35,12 +35,13 @@ import matplotlib.pyplot as plt
 #@markdown ### **Loading Pretrained Checkpoint**
 #@markdown Set `load_pretrained = True` to load pretrained weights.
 from typing import Union
-
+import json
 from rclpy.impl.implementation_singleton import rclpy_implementation as _rclpy
 from rclpy.qos import QoSProfile
 from rclpy.signals import SignalHandlerGuardCondition
 from rclpy.utilities import timeout_sec_to_nsec
 from kuka_execute import KukaMotionPlanning
+import cv2
 
 def wait_for_message(
     msg_type,
@@ -331,17 +332,19 @@ class EvaluateRealRobot:
         cropped_image_B = color_image_B[y_start_B:y_start_B + crop_height, x_start_B:x_start_B + crop_width]
         image_A = cropped_image_A
         image_B = cropped_image_B
-        ### Visualizing purposes
-        plt.figure()
-        plt.imshow(image_A, cmap='gray')
-        plt.title('Image A')
-        plt.show()
+        image_A = cv2.resize(image_A, (224, 224), interpolation=cv2.INTER_AREA)
+        image_B = cv2.resize(image_B, (224, 224), interpolation=cv2.INTER_AREA)       
+         ### Visualizing purposes
+        # plt.figure()
+        # plt.imshow(image_A, cmap='gray')
+        # plt.title('Image A')
+        # plt.show()
 
-        # Display image_B
-        plt.figure()
-        plt.imshow(image_B)
-        plt.title('Image B')
-        plt.show()
+        # # Display image_B
+        # plt.figure()
+        # plt.imshow(image_B)
+        # plt.title('Image B')
+        # plt.show()
         ## Reshape to (C, H, W)
         image_A = np.transpose(cropped_image_A, (2, 0, 1))
         image_B = np.transpose(cropped_image_B, (2, 0, 1))
@@ -438,6 +441,9 @@ class EvaluateRealRobot:
         # rewards = self.rewards
         step_idx = self.step_idx
         done = False
+        with open('stats.json', 'r') as f:
+            stats = json.load(f)
+
         with tqdm(total=max_steps, desc="Eval Real Robot") as pbar:
             while not done:
                 B = 1
@@ -447,7 +453,7 @@ class EvaluateRealRobot:
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
 
                 # normalize observation
-                nagent_poses = data_utils.normalize_data(agent_poses, stats=diffusion.stats['agent_pos'])
+                nagent_poses = data_utils.normalize_data(agent_poses, stats=stats['agent_pos'])
                 # images are already normalized to [0,1]
                 nimages = images_A
                 nimages_second_view = images_B
@@ -498,7 +504,7 @@ class EvaluateRealRobot:
                 naction = naction.detach().to('cpu').numpy()
                 # (B, pred_horizon, action_dim)
                 naction = naction[0]
-                action_pred = data_utils.unnormalize_data(naction, stats=diffusion.stats['action'])
+                action_pred = data_utils.unnormalize_data(naction, stats=stats['action'])
 
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1

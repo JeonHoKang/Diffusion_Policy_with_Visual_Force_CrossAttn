@@ -24,7 +24,7 @@ def train(continue_training=False, start_epoch = 0):
 
     num_epochs = 100
     
-    checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
+    checkpoint_dir = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/"
     if continue_training:
         start_epoch = 59
         checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{start_epoch}.pth')  # Replace with the correct path

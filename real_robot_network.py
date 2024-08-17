@@ -6,10 +6,10 @@ import math
 import torch
 import torch.nn as nn
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-import gdown
 import os
 from data_util import RealRobotDataSet
 from train_utils import train_utils
+import json
 #@markdown ### **Network**
 #@markdown
 #@markdown Defines a 1D UNet architecture `ConditionalUnet1D`
@@ -267,13 +267,7 @@ class ConditionalUnet1D(nn.Module):
 
 
 
-# download demonstration data from Google Drive
-# dataset_path = "pusht_cchi_v7_replay.zarr.zip"
-# if not os.path.isfile(dataset_path):
-#     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
-#     gdown.download(id=id, output=dataset_path, quiet=False)
-
-dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/IU_dataset.zarr.zip"
+dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/IU_DATA_80.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -316,11 +310,13 @@ class DiffusionPolicy_Real:
             )
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
-
+            # Save the stats to a file
+            with open('stats.json', 'w') as f:
+                json.dump(stats, f)           
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=12,
+                batch_size=2,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer

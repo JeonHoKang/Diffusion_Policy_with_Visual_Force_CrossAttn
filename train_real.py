@@ -1,4 +1,3 @@
-from network import DiffusionPolicy
 from real_robot_network import DiffusionPolicy_Real
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -21,7 +20,7 @@ def train_Real_Robot():
     #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
     #@markdown to load pre-trained weights
 
-    num_epochs = 250
+    num_epochs = 600
 
     # Exponential Moving Average
     # accelerates training and improves stability
@@ -29,7 +28,8 @@ def train_Real_Robot():
     ema = EMAModel(
         parameters=diffusion.nets.parameters(),
         power=0.75)
-    checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
+    
+    checkpoint_dir = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints"
     # Standard ADAM optimizer
     # Note that EMA parametesr are not optimized
     optimizer = torch.optim.AdamW(
@@ -120,7 +120,7 @@ def train_Real_Robot():
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
-            if (epoch_idx + 1) % 50 == 0 or (epoch_idx + 1) == num_epochs:
+            if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
                 torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}.pth'))
 
