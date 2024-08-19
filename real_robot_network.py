@@ -10,6 +10,7 @@ import gdown
 import os
 from data_util import RealRobotDataSet
 from train_utils import train_utils
+import json
 #@markdown ### **Network**
 #@markdown
 #@markdown Defines a 1D UNet architecture `ConditionalUnet1D`
@@ -24,6 +25,13 @@ from train_utils import train_utils
 #@markdown `x` is passed through 2 `Conv1dBlock` stacked together with residual connection.
 #@markdown `cond` is applied to `x` with [FiLM](https://arxiv.org/abs/1709.07871) conditioning.
 
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
+    
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -273,7 +281,7 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/IU_dataset.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/IU_data_4.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -316,7 +324,10 @@ class DiffusionPolicy_Real:
             )
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
-
+           # Save the stats to a file
+            with open('stats.json', 'w') as f:
+                json.dump(stats, f, cls=NumpyEncoder)
+                print("stats saved")
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
@@ -328,7 +339,7 @@ class DiffusionPolicy_Real:
                 # don't kill worker process afte each epoch
                 persistent_workers=True
             )
-            self.batch = batch
+
             self.dataloader = dataloader
             self.stats = stats
 
@@ -368,6 +379,7 @@ class DiffusionPolicy_Real:
             print("batch['image'].shape:", batch['image'].shape)
             print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
             print("batch['action'].shape", batch['action'].shape)
+            self.batch = batch
 
         # create network object
         noise_pred_net = ConditionalUnet1D(

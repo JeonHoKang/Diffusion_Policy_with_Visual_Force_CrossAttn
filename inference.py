@@ -208,7 +208,7 @@ def main():
     eval_pusht = EvaluatePushT(max_steps)
     imgs = eval_pusht.inference()
     height, width, layers = imgs[0].shape
-    video = cv2.VideoWriter('/home/lm-2023/playback_pose/src/Diffusion_Policy_ICRA/vis_PUSHT.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 15, (width, height))
+    video = cv2.VideoWriter('/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/vis_PUSHT.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 15, (width, height))
 
     for img in imgs:
         video.write(np.uint8(img))

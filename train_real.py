@@ -1,4 +1,3 @@
-from network import DiffusionPolicy
 from real_robot_network import DiffusionPolicy_Real
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -7,9 +6,10 @@ from tqdm.auto import tqdm
 import torch
 import torch.nn as nn
 import os
-import time
+import matplotlib.pyplot as plt
 
-def train_Real_Robot():
+
+def train_Real_Robot(continue_training=False, start_epoch = 0):
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
     diffusion = DiffusionPolicy_Real()
     # device transfer
@@ -21,7 +21,7 @@ def train_Real_Robot():
     #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
     #@markdown to load pre-trained weights
 
-    num_epochs = 250
+    num_epochs = 1000
 
     # Exponential Moving Average
     # accelerates training and improves stability
@@ -30,6 +30,15 @@ def train_Real_Robot():
         parameters=diffusion.nets.parameters(),
         power=0.75)
     checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
+    # To continue t raining load and set the start epoch
+    if continue_training:
+        start_epoch = 60
+        checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{start_epoch}.pth')  # Replace with the correct path
+        # Load the saved state_dict into the model
+        checkpoint = torch.load(checkpoint_path)
+        diffusion.nets.load_state_dict(checkpoint)  # Load model state
+        print("Successfully loaded Checkpoint")
+
     # Standard ADAM optimizer
     # Note that EMA parametesr are not optimized
     optimizer = torch.optim.AdamW(
@@ -43,8 +52,10 @@ def train_Real_Robot():
         num_warmup_steps=500,
         num_training_steps=len(diffusion.dataloader) * num_epochs
     )
+    # Log loss for epochs
+    epoch_losses = []
 
-    with tqdm(range(num_epochs), desc='Epoch') as tglobal:
+    with tqdm(range(start_epoch, num_epochs), desc='Epoch') as tglobal:
         # epoch loop
         for epoch_idx in tglobal:
             epoch_loss = list()
@@ -117,13 +128,22 @@ def train_Real_Robot():
 
             tglobal.set_postfix(loss=np.mean(epoch_loss))
             avg_loss = np.mean(epoch_loss)
+            epoch_losses.append(avg_loss)
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 50 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
                 torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}.pth'))
-
+    # Plot the loss after training is complete
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Loss over Epochs')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
     # Weights of the EMA model
     # is used for inference
     ema_nets = diffusion.nets
@@ -132,4 +152,4 @@ def train_Real_Robot():
 
 
 if __name__ == "__main__":
-    train_Real_Robot()
+    train_Real_Robot(continue_training=False)
