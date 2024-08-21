@@ -280,7 +280,6 @@ class EvaluateRealRobot:
         pipeline_B = self.pipeline_B
         align_A = self.align_A
         align_B = self.align_B
-        crop_width, crop_height = 480, 480
 
         # Create directories if they don't exist
         os.makedirs("images_A", exist_ok=True)
@@ -291,7 +290,7 @@ class EvaluateRealRobot:
             'K': np.array([[640, 0, 320], [0, 640, 240], [0, 0, 1]], dtype=np.float32),
             'dist': np.zeros((5, 1))  # No distortion
         }
-
+        
         # Camera A pose relative to robot base
         # camera_pose_robot_base = [0.47202, 0.150503, 1.24777, 0.00156901, 0.999158, -0.0183132, -0.036689]
         # camera_translation = np.array(camera_pose_robot_base[:3])
@@ -319,35 +318,22 @@ class EvaluateRealRobot:
         color_image_A.astype(np.float32)
         color_image_B = np.asanyarray(color_frame_B.get_data())
         color_image_B.astype(np.float32)
-        x_start = 0
-        y_start = 0
-        cropped_image_A = color_image_A[y_start:y_start + crop_height, x_start:x_start + crop_width]
 
-        center_x = color_image_B.shape[1] // 2
-        center_y = color_image_B.shape[0] // 2
-        x_start_B = center_x - crop_width // 2
-        y_start_B = center_y - crop_height // 2
-        x_start_B = max(0, min(x_start_B, color_image_B.shape[1] - crop_width))
-        y_start_B = max(0, min(y_start_B, color_image_B.shape[0] - crop_height))
-        cropped_image_B = color_image_B[y_start_B:y_start_B + crop_height, x_start_B:x_start_B + crop_width]
-        image_A = cropped_image_A
-        image_B = cropped_image_B
-        image_A = cv2.resize(image_A, (224, 224), interpolation=cv2.INTER_AREA)
-        image_B = cv2.resize(image_B, (224, 224), interpolation=cv2.INTER_AREA)       
+        image_A = cv2.resize(color_image_A, (224, 224), interpolation=cv2.INTER_AREA)
+        image_B = cv2.resize(color_image_B, (224, 224), interpolation=cv2.INTER_AREA)
+        # Convert BGR to RGB for Matplotlib visualization
+        image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
+        image_B_rgb = cv2.cvtColor(image_B, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        # plt.figure()
-        # plt.imshow(image_A, cmap='gray')
-        # plt.title('Image A')
+        # import matplotlib.pyplot as plt
+        # plt.imshow(image_A_rgb)
         # plt.show()
-
-        # # Display image_B
-        # plt.figure()
-        # plt.imshow(image_B)
-        # plt.title('Image B')
+        # plt.imshow(image_B_rgb)
         # plt.show()
-        ## Reshape to (C, H, W)
-        image_A = np.transpose(cropped_image_A, (2, 0, 1))
-        image_B = np.transpose(cropped_image_B, (2, 0, 1))
+        print(f'current agent position, {agent_pos}')
+        # Reshape to (C, H, W)
+        image_A = np.transpose(image_A_rgb, (2, 0, 1))
+        image_B = np.transpose(image_B_rgb, (2, 0, 1))
         obs['image_A'] = image_A
         obs['image_B'] = image_B
         obs['agent_pos'] = agent_pos
@@ -364,7 +350,7 @@ class EvaluateRealRobot:
         rpy = end_effector_pose_rpy[3:]
         rotation = R.from_euler('xyz', rpy, degrees=False)
         quaternion = rotation.as_quat()
-
+        print(f'action command {end_effector_pose_rpy}')
         # Create Pose message for IK
         target_pose = Pose()
         target_pose.position.x = position[0]
@@ -413,7 +399,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_250.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_700.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -441,8 +427,17 @@ class EvaluateRealRobot:
         # rewards = self.rewards
         step_idx = self.step_idx
         done = False
-        with open('stats.json', 'r') as f:
+
+
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats.json', 'r') as f:
             stats = json.load(f)
+            # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
+            stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
+            stats['agent_pos']['max'] = np.array(stats['agent_pos']['max'], dtype=np.float32)
+
+            # Convert stats['action']['min'] and ['max'] to numpy arrays with float32 type
+            stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
+            stats['action']['max'] = np.array(stats['action']['max'], dtype=np.float32)
 
         with tqdm(total=max_steps, desc="Eval Real Robot") as pbar:
             while not done:
