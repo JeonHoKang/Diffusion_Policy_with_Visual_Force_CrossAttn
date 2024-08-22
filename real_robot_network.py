@@ -6,7 +6,6 @@ import math
 import torch
 import torch.nn as nn
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-import gdown
 import os
 from data_util import RealRobotDataSet
 from train_utils import train_utils
@@ -331,7 +330,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=12,
+                batch_size=2,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
