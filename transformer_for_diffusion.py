@@ -3,7 +3,7 @@ import logging
 import torch
 import torch.nn as nn
 from normalizer import LinearNormalizer
-
+import math
 
 class ModuleAttrMixin(nn.Module):
     def __init__(self):

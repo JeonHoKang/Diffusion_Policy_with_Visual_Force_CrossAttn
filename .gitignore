@@ -3,3 +3,6 @@ __pycache__/
 *.mp4
 *checkpoints*
 *.json
+*.vscode
+*.part
+*.ckpt

@@ -374,6 +374,7 @@ class DiffusionPolicy:
             'vision_encoder': vision_encoder,
             'noise_pred_net': noise_pred_net
         })
+        
         num_diffusion_iters = 100
 
         noise_scheduler = DDPMScheduler(
