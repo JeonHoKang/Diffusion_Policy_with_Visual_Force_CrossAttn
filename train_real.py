@@ -51,6 +51,8 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
         num_warmup_steps=500,
         num_training_steps=len(diffusion.dataloader) * num_epochs
     )
+
+    
     # Log loss for epochs
     epoch_losses = []
 
@@ -87,6 +89,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
 
 
                     nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
+                    nforce = nbatch['force'][:,:diffusion.obs_horizon].to(device)
                     naction = nbatch['action'].to(device)
                     B = nagent_pos.shape[0]
 

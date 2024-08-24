@@ -99,6 +99,23 @@ class data_utils:
         data = ndata * (stats['max'] - stats['min']) + stats['min']
         return data
 
+    def normalize_force(data):
+        # nomalize to [0,1]
+        min_force = np.min(data, axis=0)
+        max_force = np.max(data, axis=0)
+        ndata = (data - min_force) / (max_force - max_force)
+        # normalize to [-1, 1]
+        ndata = ndata * 2 - 1
+        return ndata
+    
+    def unnormalize_force(ndata):
+        # nomalize to [0,1]
+        min_force = np.min(data, axis=0)
+        max_force = np.max(data, axis=0)
+        data = ndata * (max_force- min_force) + min_force
+        return ndata
+    
+
 # dataset
 class PushTImageDataset(torch.utils.data.Dataset):
     def __init__(self,
@@ -189,6 +206,9 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         train_image_data = np.moveaxis(train_image_data, -1,1)
         train_image_data_second_view = dataset_root['data']['images_B'][:]
         train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
+        # (N, D)
+        force_data = dataset_root['data']['force']
+        normalized_force_data = data_utils.normalize_force(force_data)
         # (N,3,96,96)
         # (N, D)
         train_data = {
@@ -216,6 +236,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         # images are already normalized
         normalized_train_data['image'] = train_image_data
         normalized_train_data['image2'] = train_image_data_second_view
+        normalized_train_data['force'] = normalized_force_data
         self.indices = indices
         self.stats = stats
         self.normalized_train_data = normalized_train_data
@@ -244,5 +265,6 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         # discard unused observations
         nsample['image'] = nsample['image'][:self.obs_horizon,:]
         nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
+        nsample['force'] = nsample['image2'][:self.obs_horizon,:]
         nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
         return nsample

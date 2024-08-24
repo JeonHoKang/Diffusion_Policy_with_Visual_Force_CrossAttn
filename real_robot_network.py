@@ -302,8 +302,10 @@ class DiffusionPolicy_Real:
         vision_feature_dim = 1024
         # agent_pos is six (x,y,z, roll, pitch, yaw) dimensional
         lowdim_obs_dim = 6
+        # Cartesian force dimension (F_x, F_y, F_z)
+        force_obs_dim = 3
         # observation feature has 514 dims in total per step
-        obs_dim = vision_feature_dim + lowdim_obs_dim
+        obs_dim = vision_feature_dim + lowdim_obs_dim + force_obs_dim
         # action dimension should also correspond with the state dimension (x,y,z, roll, pitch, yaw)
         action_dim = 6
         # parameters
@@ -330,7 +332,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=2,
+                batch_size=64,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
@@ -376,6 +378,7 @@ class DiffusionPolicy_Real:
             # visualize data in batch
             batch = next(iter(dataloader))
             print("batch['image'].shape:", batch['image'].shape)
+            print("batch[image].shape", batch["image2"].shape)
             print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
             print("batch['action'].shape", batch['action'].shape)
             self.batch = batch
