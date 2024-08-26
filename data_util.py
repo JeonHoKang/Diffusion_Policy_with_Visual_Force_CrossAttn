@@ -193,7 +193,8 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         # (N, D)
         train_data = {
             # first six dims of state vector are agent (i.e. gripper) locations
-            'agent_pos': dataset_root['data']['state'][:,:6],
+            # Seven because we will use quaternion 
+            'agent_pos': dataset_root['data']['state'][:,:7],
             'action': dataset_root['data']['action'][:]
         }
         episode_ends = dataset_root['meta']['episode_ends'][:]
@@ -212,6 +213,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         for key, data in train_data.items():
             stats[key] = data_utils.get_data_stats(data)
             normalized_train_data[key] = data_utils.normalize_data(data, stats[key])
+            ## TODO: Add code that will handle - and + sign for quaternion
 
         # images are already normalized
         normalized_train_data['image'] = train_image_data

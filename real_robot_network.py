@@ -300,12 +300,12 @@ class DiffusionPolicy_Real:
         vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         # ResNet18 has output dim of 512 X 2 because two views
         vision_feature_dim = 1024
-        # agent_pos is six (x,y,z, roll, pitch, yaw) dimensional
-        lowdim_obs_dim = 6
+        # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
+        lowdim_obs_dim = 7
         # observation feature has 514 dims in total per step
         obs_dim = vision_feature_dim + lowdim_obs_dim
-        # action dimension should also correspond with the state dimension (x,y,z, roll, pitch, yaw)
-        action_dim = 6
+        # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
+        action_dim = 7
         # parameters
         pred_horizon = 16
         obs_horizon = 2
@@ -330,7 +330,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=2,
+                batch_size=64,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
