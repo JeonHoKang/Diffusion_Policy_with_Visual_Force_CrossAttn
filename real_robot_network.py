@@ -280,7 +280,7 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/IU_data_4.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/battery_47.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -376,6 +376,7 @@ class DiffusionPolicy_Real:
             # visualize data in batch
             batch = next(iter(dataloader))
             print("batch['image'].shape:", batch['image'].shape)
+            print("batch['image2'].shape:", batch['image2'].shape)
             print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
             print("batch['action'].shape", batch['action'].shape)
             self.batch = batch

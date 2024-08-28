@@ -99,6 +99,13 @@ class data_utils:
         data = ndata * (stats['max'] - stats['min']) + stats['min']
         return data
 
+    def process_quaternion(quaternion_array):
+        negative_real_indices = quaternion_array[:, 3] < 0
+        # Negate the entire quaternion for rows where the real component is negative
+        quaternion_array[negative_real_indices] *= -1
+        
+        return quaternion_array
+    
 # dataset
 class PushTImageDataset(torch.utils.data.Dataset):
     def __init__(self,
@@ -192,10 +199,10 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         # (N,3,96,96)
         # (N, D)
         train_data = {
-            # first six dims of state vector are agent (i.e. gripper) locations
+            # first seven dims of state vector are agent (i.e. gripper) locations
             # Seven because we will use quaternion 
             'agent_pos': dataset_root['data']['state'][:,:7],
-            'action': dataset_root['data']['action'][:]
+            'action': dataset_root['data']['action']
         }
         episode_ends = dataset_root['meta']['episode_ends'][:]
 
@@ -211,8 +218,10 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         stats = dict()
         normalized_train_data = dict()
         for key, data in train_data.items():
-            stats[key] = data_utils.get_data_stats(data)
-            normalized_train_data[key] = data_utils.normalize_data(data, stats[key])
+            stats[key] = data_utils.get_data_stats(data[:,:3])
+            normalized_position = data_utils.normalize_data(data[:,:3], stats[key])
+            normalized_orientation = data_utils.process_quaternion(data[:,3:7])
+            normalized_train_data[key] = np.hstack((normalized_position, normalized_orientation))
             ## TODO: Add code that will handle - and + sign for quaternion
 
         # images are already normalized
@@ -247,4 +256,5 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         nsample['image'] = nsample['image'][:self.obs_horizon,:]
         nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
         nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
+
         return nsample

@@ -172,4 +172,4 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=True)
+    train_Real_Robot(continue_training=False)

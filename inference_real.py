@@ -476,9 +476,10 @@ class EvaluateRealRobot:
                     noisy_action = torch.randn(
                         (B, diffusion.pred_horizon, diffusion.action_dim), device=device)
                     naction = noisy_action
-
+                    diffusion_inference_iteration = 20
                     # init scheduler
-                    diffusion.noise_scheduler.set_timesteps(diffusion.num_diffusion_iters)
+                    diffusion.noise_scheduler.set_timesteps(diffusion_inference_iteration)
+                    denoising_steps_inference  = 20
 
                     for k in diffusion.noise_scheduler.timesteps:
                         # predict noise
