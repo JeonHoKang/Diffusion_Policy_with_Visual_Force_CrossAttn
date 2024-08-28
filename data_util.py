@@ -99,23 +99,30 @@ class data_utils:
         data = ndata * (stats['max'] - stats['min']) + stats['min']
         return data
 
-    def normalize_force(data):
+    def process_quaternion(quaternion_array):
+        negative_real_indices = quaternion_array[:, 3] < 0
+        # Negate the entire quaternion for rows where the real component is negative
+        quaternion_array[negative_real_indices] *= -1
+        
+        return quaternion_array
+    
+    def normalize_force_vector(force_vector):
+        
+        # Calculate the magnitude of each force vector along axis 1
+        magnitudes = np.linalg.norm(force_vector, axis=1, keepdims=True)
+        
+        # Avoid division by zero by using a small epsilon value
+        magnitudes[magnitudes == 0] = 1e-8
+        
+        # Normalize each force vector by dividing by its magnitude
+        normalized_forces = force_vector / magnitudes
+        return magnitudes, normalized_forces
+    
+    def normalize_force_magnitude(data, stats):
         # nomalize to [0,1]
-        min_force = np.min(data, axis=0)
-        max_force = np.max(data, axis=0)
-        ndata = (data - min_force) / (max_force - max_force)
-        # normalize to [-1, 1]
-        ndata = ndata * 2 - 1
+        ndata = (data - stats['min']) / (stats['max'] - stats['min'])
         return ndata
     
-    def unnormalize_force(ndata):
-        # nomalize to [0,1]
-        min_force = np.min(data, axis=0)
-        max_force = np.max(data, axis=0)
-        data = ndata * (max_force- min_force) + min_force
-        return ndata
-    
-
 # dataset
 class PushTImageDataset(torch.utils.data.Dataset):
     def __init__(self,
@@ -206,15 +213,13 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         train_image_data = np.moveaxis(train_image_data, -1,1)
         train_image_data_second_view = dataset_root['data']['images_B'][:]
         train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
-        # (N, D)
-        force_data = dataset_root['data']['force']
-        normalized_force_data = data_utils.normalize_force(force_data)
         # (N,3,96,96)
         # (N, D)
         train_data = {
-            # first six dims of state vector are agent (i.e. gripper) locations
-            'agent_pos': dataset_root['data']['state'][:,:6],
-            'action': dataset_root['data']['action'][:]
+            # first seven dims of state vector are agent (i.e. gripper) locations
+            # Seven because we will use quaternion 
+            'agent_pos': dataset_root['data']['state'][:,:7],
+            'action': dataset_root['data']['action']
         }
         episode_ends = dataset_root['meta']['episode_ends'][:]
 
@@ -230,9 +235,18 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         stats = dict()
         normalized_train_data = dict()
         for key, data in train_data.items():
-            stats[key] = data_utils.get_data_stats(data)
-            normalized_train_data[key] = data_utils.normalize_data(data, stats[key])
+            stats[key] = data_utils.get_data_stats(data[:,:3])
+            normalized_position = data_utils.normalize_data(data[:,:3], stats[key])
+            normalized_orientation = data_utils.process_quaternion(data[:,3:7])
+            normalized_train_data[key] = np.hstack((normalized_position, normalized_orientation))
+            ## TODO: Add code that will handle - and + sign for quaternion
 
+
+        train_force_data = dataset_root['data']['state'][:,7:10]
+        magnitudes, normalized_force_direction = data_utils.normalize_force_vector(train_force_data)
+        stats['force_mag'] = data_utils.get_data_stats(magnitudes)
+        normalized_force_mag = data_utils.normalize_force_magnitude(magnitudes, stats['force_mag'])
+        normalized_force_data = np.hstack((normalized_force_mag, normalized_force_direction))
         # images are already normalized
         normalized_train_data['image'] = train_image_data
         normalized_train_data['image2'] = train_image_data_second_view
@@ -265,6 +279,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         # discard unused observations
         nsample['image'] = nsample['image'][:self.obs_horizon,:]
         nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
-        nsample['force'] = nsample['image2'][:self.obs_horizon,:]
+        nsample['force'] = nsample['force'][:self.obs_horizon,:]
         nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
+
         return nsample

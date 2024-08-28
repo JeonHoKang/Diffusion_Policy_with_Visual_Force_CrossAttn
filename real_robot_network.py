@@ -280,7 +280,7 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/IU_data_4.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/battery_47.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -300,14 +300,14 @@ class DiffusionPolicy_Real:
         vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         # ResNet18 has output dim of 512 X 2 because two views
         vision_feature_dim = 1024
-        # agent_pos is six (x,y,z, roll, pitch, yaw) dimensional
-        lowdim_obs_dim = 6
+        # agent_pos is six (x,y,z, qx,qy,qz,qw) dimensional
+        lowdim_obs_dim = 7
         # Cartesian force dimension (F_x, F_y, F_z)
-        force_obs_dim = 3
+        force_obs_dim = 4
         # observation feature has 514 dims in total per step
         obs_dim = vision_feature_dim + lowdim_obs_dim + force_obs_dim
-        # action dimension should also correspond with the state dimension (x,y,z, roll, pitch, yaw)
-        action_dim = 6
+        # action dimension should also correspond with the state dimension (x,y,z, qx,qy,qz,qw)
+        action_dim = 7
         # parameters
         pred_horizon = 16
         obs_horizon = 2
@@ -332,7 +332,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=64,
+                batch_size=2,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
@@ -380,6 +380,7 @@ class DiffusionPolicy_Real:
             print("batch['image'].shape:", batch['image'].shape)
             print("batch[image].shape", batch["image2"].shape)
             print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
+            print("batch['force'].shape:", batch['force'].shape)
             print("batch['action'].shape", batch['action'].shape)
             self.batch = batch
 

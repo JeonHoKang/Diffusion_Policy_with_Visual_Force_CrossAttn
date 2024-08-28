@@ -69,13 +69,13 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
                     nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
 
                     ### Debug sequential data structure. It shoud be consecutive
-                    import matplotlib.pyplot as plt
-                    imdata1 = nimage[0].cpu()
-                    imdata1 = imdata1.numpy()
-                    imdata2 = nimage_second_view[0].cpu()
-                    imdata2 = imdata2.numpy()
+                    # import matplotlib.pyplot as plt
+                    # imdata1 = nimage[0].cpu()
+                    # imdata1 = imdata1.numpy()
+                    # imdata2 = nimage_second_view[0].cpu()
+                    # imdata2 = imdata2.numpy()
           
-                    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+                    # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
                     # for j in range(2):
                     #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
                     #     img = imdata2[j].transpose(1, 2, 0)
@@ -108,7 +108,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
                     # (B,obs_horizon,D)
 
                     # concatenate vision feature and low-dim obs
-                    obs_features = torch.cat([image_features, image_features_second_view, nagent_pos], dim=-1)
+                    obs_features = torch.cat([image_features, image_features_second_view, nforce, nagent_pos], dim=-1)
                     obs_cond = obs_features.flatten(start_dim=1)
                     # (B, obs_horizon * obs_dim)
 
@@ -175,4 +175,4 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=True)
+    train_Real_Robot(continue_training=False)
