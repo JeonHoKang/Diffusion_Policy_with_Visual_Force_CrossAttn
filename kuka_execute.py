@@ -6,14 +6,18 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
+from geometry_msgs.msg import WrenchStamped
+
+
 
 class KukaMotionPlanning(Node):
-    def __init__(self):
+    def __init__(self, current_step):
         super().__init__('kuka_motion_planning')
         self._action_client = ActionClient(self, FollowJointTrajectory, '/lbr/joint_trajectory_controller/follow_joint_trajectory')
-        
+        self.force_torque_data = None  # Initialize force/torque data container
+        self.current_step = current_step
         self.joint_names = ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]
-      
+
 
     def send_goal(self, joint_trajectories):
         goal_msg = FollowJointTrajectory.Goal()
@@ -21,15 +25,21 @@ class KukaMotionPlanning(Node):
         trajectory_msg.joint_names = self.joint_names
         point = JointTrajectoryPoint()
         point.positions = list(joint_trajectories.position)
-        point.time_from_start.sec = 1  # Each point takes one second
+        if self.current_step < 15 :
+            point.time_from_start.sec = 10  # 3 seconds for the first point
+        else:
+            point.time_from_start.sec = 5 
+            # point.time_from_start.nanosec = int(0.2 * 1e9)
         trajectory_msg.points.append(point)
-        
+    
         goal_msg.trajectory = trajectory_msg
         
         self._action_client.wait_for_server()
         self._send_goal_future = self._action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
         self._send_goal_future.add_done_callback(self.goal_response_callback)
         rclpy.spin_until_future_complete(self, self._send_goal_future)
+
+
 
     def goal_response_callback(self, future):
         goal_handle = future.result()

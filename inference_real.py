@@ -27,7 +27,7 @@ from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionFK, GetPositionIK
 from moveit_msgs.msg import RobotState, MoveItErrorCodes
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, WrenchStamped
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
 # from data_collection.submodules.wait_for_message import wait_for_message
@@ -104,7 +104,11 @@ class EndEffectorPoseNode(Node):
 
     def __init__(self, node_id: str) -> None:
         super().__init__(f"end_effector_pose_node_{node_id}")
+        self.force_torque_topic_ = "/lbr/force_torque_broadcaster/wrench"
 
+        # Subscribe to the force/torque sensor topic
+        self.force_torque_subscriber = self.create_subscription(WrenchStamped, self.force_torque_topic_, self.force_torque_callback, 10)
+        
         self.fk_client_ = self.create_client(GetPositionFK, self.fk_srv_name_)
         if not self.fk_client_.wait_for_service(timeout_sec=self.timeout_sec_):
             self.get_logger().error("FK service not available.")
@@ -113,6 +117,9 @@ class EndEffectorPoseNode(Node):
         if not self.ik_client_.wait_for_service(timeout_sec=self.timeout_sec_):
             self.get_logger().error("IK service not available.")
             exit(1)
+
+    def force_torque_callback(self, msg):
+        self.force_torque_data = msg.wrench
 
     def get_fk(self) -> Pose | None:
         current_joint_state_set, current_joint_state = wait_for_message(
@@ -150,11 +157,12 @@ class EndEffectorPoseNode(Node):
         pose = response.pose_stamped[0].pose
         position = [pose.position.x, pose.position.y, pose.position.z]
         quaternion = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
-
-        # Convert quaternion to roll, pitch, yaw
-        rotation = R.from_quat(quaternion)
-        rpy = rotation.as_euler('xyz', degrees=False).tolist()
-        return position + rpy
+        if quaternion[3] < 0:
+            quaternion = [-x for x in quaternion]
+        # # Convert quaternion to roll, pitch, yaw
+        # rotation = R.from_quat(quaternion)
+        # rpy = rotation.as_euler('xyz', degrees=False).tolist()
+        return position + quaternion
     
     def get_ik(self, target_pose: Pose) -> JointState | None:
         request = GetPositionIK.Request()
@@ -210,6 +218,7 @@ class EvaluateRealRobot:
 
         # rewards = list()
         step_idx = 0
+        self.max_steps = max_steps
         # device transfer
         device = torch.device('cuda')
         _ = diffusion.nets.to(device)
@@ -230,13 +239,11 @@ class EvaluateRealRobot:
         config_A = rs.config()
         config_A.enable_device(serial_A)
         config_A.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        config_A.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
 
         # Configure Camera B
         config_B = rs.config()
         config_B.enable_device(serial_B)
         config_B.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        config_B.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
 
         # Start pipelines
 
@@ -302,10 +309,16 @@ class EvaluateRealRobot:
         agent_pos = EE_Pose_Node.get_fk()
         agent_pos = np.array(agent_pos)
         agent_pos.astype(np.float64)
-
+        # Get force/torque data
 
         if agent_pos is None:
             EE_Pose_Node.get_logger().error("Failed to get end effector pose")
+
+
+        force_torque_data = [EE_Pose_Node.force_torque_data.force.x, EE_Pose_Node.force_torque_data.force.y, EE_Pose_Node.force_torque_data.force.z]
+        
+        force_torque_data = np.asanyarray(force_torque_data)
+        force_torque_data.astype(np.float32)
         #####
         frames_A = pipeline_A.wait_for_frames()
         aligned_frames_A = align_A.process(frames_A)
@@ -318,39 +331,48 @@ class EvaluateRealRobot:
         color_image_A.astype(np.float32)
         color_image_B = np.asanyarray(color_frame_B.get_data())
         color_image_B.astype(np.float32)
+        crop_width = 480
+        crop_height = 480
+        start_x = (640 - crop_width) // 2
+        start_y = (480 - crop_height) // 2
 
-        image_A = cv2.resize(color_image_A, (224, 224), interpolation=cv2.INTER_AREA)
-        image_B = cv2.resize(color_image_B, (224, 224), interpolation=cv2.INTER_AREA)
+        # Crop the image to 480x480
+        cropped_image_A = color_image_A[start_y:start_y + crop_height, start_x:start_x + crop_width]
+        cropped_image_B = color_image_B[start_y:start_y + crop_height, start_x:start_x + crop_width]
+
+        image_A = cv2.resize(cropped_image_A, (224, 224), interpolation=cv2.INTER_AREA)
+        image_B = cv2.resize(cropped_image_B, (224, 224), interpolation=cv2.INTER_AREA)
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
         image_B_rgb = cv2.cvtColor(image_B, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        # import matplotlib.pyplot as plt
-        # plt.imshow(image_A_rgb)
-        # plt.show()
-        # plt.imshow(image_B_rgb)
-        # plt.show()
+        import matplotlib.pyplot as plt
+        plt.imshow(image_A_rgb)
+        plt.show()
+        plt.imshow(image_B_rgb)
+        plt.show()
         print(f'current agent position, {agent_pos}')
         # Reshape to (C, H, W)
-        image_A = np.transpose(image_A_rgb, (2, 0, 1))
-        image_B = np.transpose(image_B_rgb, (2, 0, 1))
-        obs['image_A'] = image_A
-        obs['image_B'] = image_B
+
+        image_A_processed = np.transpose(image_A_rgb, (2, 0, 1))
+        image_B_processed = np.transpose(image_B_rgb, (2, 0, 1))
+        obs['image_A'] = image_A_processed
+        obs['image_B'] = image_B_processed
+        obs['force'] = force_torque_data
         obs['agent_pos'] = agent_pos
         EE_Pose_Node.destroy_node()
 
         return obs
     
-    def execute_action(self, end_effector_pose_rpy):
+    def execute_action(self, end_effector_pos, steps):
+        
         ### Stepping function to execute action with robot
         #TODO: Execute Motion
         EE_Pose_Node = EndEffectorPoseNode("exec")
-        end_effector_pose_rpy = [float(value) for value in end_effector_pose_rpy]
-        position = end_effector_pose_rpy[:3]
-        rpy = end_effector_pose_rpy[3:]
-        rotation = R.from_euler('xyz', rpy, degrees=False)
-        quaternion = rotation.as_quat()
-        print(f'action command {end_effector_pose_rpy}')
+        end_effector_pos = [float(value) for value in end_effector_pos]
+        position = end_effector_pos[:3]
+        quaternion = end_effector_pos[3:]
+        print(f'action command {end_effector_pos}')
         # Create Pose message for IK
         target_pose = Pose()
         target_pose.position.x = position[0]
@@ -370,7 +392,7 @@ class EvaluateRealRobot:
         # # Create a JointTrajectory message
         # goal_msg = FollowJointTrajectory.Goal()
         # trajectory_msg = JointTrajectory()
-        kuka_execution = KukaMotionPlanning()
+        kuka_execution = KukaMotionPlanning(steps)
         kuka_execution.send_goal(joint_state)
 
         # # trajectory_msg.joint_names = kuka_execution.joint_names
@@ -399,7 +421,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/checkpoint_250.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2400.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -427,13 +449,15 @@ class EvaluateRealRobot:
         # rewards = self.rewards
         step_idx = self.step_idx
         done = False
-
+        steps = 0
 
         with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
             stats['agent_pos']['max'] = np.array(stats['agent_pos']['max'], dtype=np.float32)
+            stats['force_mag']['min'] = np.array(stats['force_mag']['min'], dtype=np.float32)
+            stats['force_mag']['max'] = np.array(stats['force_mag']['max'], dtype=np.float32)
 
             # Convert stats['action']['min'] and ['max'] to numpy arrays with float32 type
             stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
@@ -445,19 +469,24 @@ class EvaluateRealRobot:
                 # stack the last obs_horizon number of observations
                 images_A = np.stack([x['image_A'] for x in obs_deque])
                 images_B = np.stack([x['image_B'] for x in obs_deque])
+                force_obs = np.stack([x['force'] for x in obs_deque])
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
 
                 # normalize observation
-                nagent_poses = data_utils.normalize_data(agent_poses, stats=stats['agent_pos'])
+                nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
+                nforce_mag, nforce_vec = data_utils.normalize_force_vector(force_obs)
+                normalized_force_mag = data_utils.normalize_force_magnitude(nforce_mag, stats['force_mag'])
+                normalized_force_data = np.hstack((normalized_force_mag, nforce_vec))
                 # images are already normalized to [0,1]
                 nimages = images_A
                 nimages_second_view = images_B
                 # device transfer
                 nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
-
+                nforce_observation = torch.from_numpy(normalized_force_data).to(device, dtype=torch.float32)
                 # (2,3,480,480)
-                nagent_poses = torch.from_numpy(nagent_poses).to(device, dtype=torch.float32)
+                processed_agent_poses = np.hstack((nagent_poses, agent_poses[:,3:]))
+                nagent_poses = torch.from_numpy(processed_agent_poses).to(device, dtype=torch.float32)
 
                 # infer action
                 with torch.no_grad():
@@ -467,7 +496,7 @@ class EvaluateRealRobot:
                     image_features_second_view = ema_nets['vision_encoder2'](nimages_second_view)
 
                     # concat with low-dim observations
-                    obs_features = torch.cat([image_features, image_features_second_view, nagent_poses], dim=-1)
+                    obs_features = torch.cat([image_features, image_features_second_view, nforce_observation, nagent_poses], dim=-1)
 
                     # reshape observation to (B,obs_horizon*obs_dim)
                     obs_cond = obs_features.unsqueeze(0).flatten(start_dim=1)
@@ -499,8 +528,8 @@ class EvaluateRealRobot:
                 naction = naction.detach().to('cpu').numpy()
                 # (B, pred_horizon, action_dim)
                 naction = naction[0]
-                action_pred = data_utils.unnormalize_data(naction, stats=stats['action'])
-
+                action_pred = data_utils.unnormalize_data(naction[:,:3], stats=stats['action'])
+                action_pred = np.hstack((action_pred, naction[:,3:]))
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
                 end = start + diffusion.action_horizon
@@ -511,7 +540,9 @@ class EvaluateRealRobot:
                 # without replanning
                 for i in range(len(action)):
                     # stepping env
-                    obs = self.execute_action(action[i])
+                    print
+                    obs = self.execute_action(action[i], steps)
+                    steps+=1
                     # save observations
                     obs_deque.append(obs)
                     # and reward/vis
