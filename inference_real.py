@@ -26,7 +26,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionFK, GetPositionIK
-from moveit_msgs.msg import RobotState, MoveItErrorCodes
+from moveit_msgs.msg import RobotState, MoveItErrorCodes, JointConstraint, Constraints
 from geometry_msgs.msg import Pose
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
@@ -158,13 +158,28 @@ class EndEffectorPoseNode(Node):
     
     def get_ik(self, target_pose: Pose) -> JointState | None:
         request = GetPositionIK.Request()
-    
+
         request.ik_request.group_name = "arm"
         # tf_prefix = self.get_namespace()[1:]
         request.ik_request.pose_stamped.header.frame_id = f"{self.base_}"
         request.ik_request.pose_stamped.header.stamp = self.get_clock().now().to_msg()
         request.ik_request.pose_stamped.pose = target_pose
         request.ik_request.avoid_collisions = True
+        joint_names = ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]
+        constraints = Constraints()
+        current_positions = []
+        current_joint_state_set, current_joint_state = wait_for_message(
+            JointState, self, self.joint_state_topic_, time_to_wait=1.0
+        )
+        for joint_name,current_position in zip(joint_names, current_positions):
+            joint_constraint = JointConstraint()
+            joint_constraint.joint_name = joint_name
+            joint_constraint.position = current_position
+            joint_constraint.tolerance_below = np.pi/3
+            joint_constraint.tolerance_above = np.pi/3
+            joint_constraint.weight = 1.0
+            constraints.joint_constraints.append(joint_constraint)
+        request.ik_request.constraints = constraints
 
         future = self.ik_client_.call_async(request)
 
