@@ -6,7 +6,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
-
+import time
 class KukaMotionPlanning(Node):
     def __init__(self, current_step):
         super().__init__('kuka_motion_planning')
@@ -22,11 +22,11 @@ class KukaMotionPlanning(Node):
         point = JointTrajectoryPoint()
         point.positions = list(joint_trajectories.position)
         if self.current_step < 15 :
-            point.time_from_start.sec = 10  # 3 seconds for the first point
+            point.time_from_start.sec = 3  # 3 seconds for the first point
         else:
-            point.time_from_start.sec = 5 
+            point.time_from_start.sec = 1
         trajectory_msg.points.append(point)
-        
+        time.sleep(1)
         goal_msg.trajectory = trajectory_msg
         
         self._action_client.wait_for_server()

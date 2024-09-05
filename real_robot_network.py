@@ -280,7 +280,7 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/battery_47.zarr.zip"
+dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/insertion.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -330,7 +330,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=64,
+                batch_size=16,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer

@@ -166,7 +166,54 @@ class EndEffectorPoseNode(Node):
         request.ik_request.pose_stamped.header.stamp = self.get_clock().now().to_msg()
         request.ik_request.pose_stamped.pose = target_pose
         request.ik_request.avoid_collisions = True
+        constraints = Constraints()
+        current_positions = []
+        current_joint_state_set, current_joint_state = wait_for_message(
+            JointState, self, self.joint_state_topic_, time_to_wait=1.0
+        )
+        for joint_name,current_position in zip(current_joint_state.name, np.array(current_joint_state.position)):
+            if joint_name == "A1":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/4
+                joint_constraint.tolerance_above = np.pi/4
+                joint_constraint.weight = 1.0
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A2":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/4
+                joint_constraint.tolerance_above = np.pi/4
+                joint_constraint.weight = 1.0
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A3":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/2
+                joint_constraint.tolerance_above = np.pi/2
+                joint_constraint.weight = 0.5
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A4":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/2
+                joint_constraint.tolerance_above = np.pi/2
+                joint_constraint.weight = 0.5
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A5":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/3
+                joint_constraint.tolerance_above = np.pi/3
+                joint_constraint.weight = 0.5
+                constraints.joint_constraints.append(joint_constraint)
 
+        request.ik_request.constraints = constraints
         future = self.ik_client_.call_async(request)
 
         rclpy.spin_until_future_complete(self, future)
@@ -223,20 +270,18 @@ class EvaluateRealRobot:
         if len(camera_devices) < 2:
             raise RuntimeError("Two cameras are required, but fewer were detected.")
 
-        serial_A = camera_devices[1].get_info(rs.camera_info.serial_number)
-        serial_B = camera_devices[0].get_info(rs.camera_info.serial_number)
+        serial_A = camera_devices[0].get_info(rs.camera_info.serial_number)
+        serial_B = camera_devices[1].get_info(rs.camera_info.serial_number)
 
         # Configure Camera A
         config_A = rs.config()
         config_A.enable_device(serial_A)
         config_A.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        config_A.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
 
         # Configure Camera B
         config_B = rs.config()
         config_B.enable_device(serial_B)
         config_B.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        config_B.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
 
         # Start pipelines
 
@@ -397,7 +442,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_insertion_vn.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_vn.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -428,7 +473,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_instertion_vn.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats _vanilla-prying.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -499,7 +544,7 @@ class EvaluateRealRobot:
                 action_pred = np.hstack((action_pred, naction[:,3:]))
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon
+                end = start + diffusion.action_horizon + 8
                 action = action_pred[start:end,:]
             # (action_horizon, action_dim)
     
@@ -536,7 +581,7 @@ def main():
     # Initialize RealSense pipelines for both cameras
     rclpy.init()
     try:  
-        max_steps = 800
+        max_steps = 100
         # Evaluate Real Robot Environment
         eval_real_robot = EvaluateRealRobot(max_steps)
         eval_real_robot.inference()
