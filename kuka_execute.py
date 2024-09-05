@@ -7,7 +7,7 @@ from rclpy.action import ActionClient
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
 from geometry_msgs.msg import WrenchStamped
-
+import time
 
 
 class KukaMotionPlanning(Node):
@@ -26,9 +26,9 @@ class KukaMotionPlanning(Node):
         point = JointTrajectoryPoint()
         point.positions = list(joint_trajectories.position)
         if self.current_step < 15 :
-            point.time_from_start.sec = 10  # 3 seconds for the first point
+            point.time_from_start.sec = 4  # 3 seconds for the first point
         else:
-            point.time_from_start.sec = 5 
+            point.time_from_start.sec = 1
             # point.time_from_start.nanosec = int(0.2 * 1e9)
         trajectory_msg.points.append(point)
     
@@ -38,7 +38,7 @@ class KukaMotionPlanning(Node):
         self._send_goal_future = self._action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
         self._send_goal_future.add_done_callback(self.goal_response_callback)
         rclpy.spin_until_future_complete(self, self._send_goal_future)
-
+        time.sleep(0.5)
 
 
     def goal_response_callback(self, future):

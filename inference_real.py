@@ -26,7 +26,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionFK, GetPositionIK
-from moveit_msgs.msg import RobotState, MoveItErrorCodes
+from moveit_msgs.msg import RobotState, MoveItErrorCodes, Constraints, JointConstraint
 from geometry_msgs.msg import Pose, WrenchStamped
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
@@ -173,7 +173,54 @@ class EndEffectorPoseNode(Node):
         request.ik_request.pose_stamped.header.stamp = self.get_clock().now().to_msg()
         request.ik_request.pose_stamped.pose = target_pose
         request.ik_request.avoid_collisions = True
+        constraints = Constraints()
+        current_positions = []
+        current_joint_state_set, current_joint_state = wait_for_message(
+            JointState, self, self.joint_state_topic_, time_to_wait=1.0
+        )
+        for joint_name,current_position in zip(current_joint_state.name, np.array(current_joint_state.position)):
+            if joint_name == "A1":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/5
+                joint_constraint.tolerance_above = np.pi/5
+                joint_constraint.weight = 1.0
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A2":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/5
+                joint_constraint.tolerance_above = np.pi/5
+                joint_constraint.weight = 1.0
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A3":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/3
+                joint_constraint.tolerance_above = np.pi/3
+                joint_constraint.weight = 0.5
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A4":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/2
+                joint_constraint.tolerance_above = np.pi/2
+                joint_constraint.weight = 0.5
+                constraints.joint_constraints.append(joint_constraint)
+            elif joint_name == "A5":
+                joint_constraint = JointConstraint()
+                joint_constraint.joint_name = joint_name
+                joint_constraint.position = current_position
+                joint_constraint.tolerance_below = np.pi/4
+                joint_constraint.tolerance_above = np.pi/4
+                joint_constraint.weight = 0.5
+                constraints.joint_constraints.append(joint_constraint)
 
+        request.ik_request.constraints = constraints
         future = self.ik_client_.call_async(request)
 
         rclpy.spin_until_future_complete(self, future)
@@ -346,12 +393,12 @@ class EvaluateRealRobot:
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
         image_B_rgb = cv2.cvtColor(image_B, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        import matplotlib.pyplot as plt
-        plt.imshow(image_A_rgb)
-        plt.show()
-        plt.imshow(image_B_rgb)
-        plt.show()
-        print(f'current agent position, {agent_pos}')
+        # # import matplotlib.pyplot as plt
+        # plt.imshow(image_A_rgb)
+        # plt.show()
+        # plt.imshow(image_B_rgb)
+        # plt.show()
+        # print(f'current agent position, {agent_pos}')
         # Reshape to (C, H, W)
 
         image_A_processed = np.transpose(image_A_rgb, (2, 0, 1))
@@ -421,7 +468,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2400.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_insertion_force.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -451,7 +498,7 @@ class EvaluateRealRobot:
         done = False
         steps = 0
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_insertion_force.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -507,8 +554,9 @@ class EvaluateRealRobot:
                     naction = noisy_action
 
                     # init scheduler
-                    diffusion.noise_scheduler.set_timesteps(diffusion.num_diffusion_iters)
-
+                    diffusion_inference_iteration = 16
+                    diffusion.noise_scheduler.set_timesteps(diffusion_inference_iteration)
+                    
                     for k in diffusion.noise_scheduler.timesteps:
                         # predict noise
                         noise_pred = ema_nets['noise_pred_net'](
@@ -532,7 +580,7 @@ class EvaluateRealRobot:
                 action_pred = np.hstack((action_pred, naction[:,3:]))
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon
+                end = start + diffusion.action_horizon+4
                 action = action_pred[start:end,:]
             # (action_horizon, action_dim)
     
@@ -568,7 +616,7 @@ def main():
     # Initialize RealSense pipelines for both cameras
     rclpy.init()
     try:  
-        max_steps = 800
+        max_steps = 10000
         # Evaluate Real Robot Environment
         eval_real_robot = EvaluateRealRobot(max_steps)
         eval_real_robot.inference()
