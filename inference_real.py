@@ -150,36 +150,22 @@ class EndEffectorPoseNode(Node):
         pose = response.pose_stamped[0].pose
         position = [pose.position.x, pose.position.y, pose.position.z]
         quaternion = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
-
-        # Convert quaternion to roll, pitch, yaw
-        rotation = R.from_quat(quaternion)
-        rpy = rotation.as_euler('xyz', degrees=False).tolist()
-        return position + rpy
+        if quaternion[3] < 0:
+            quaternion = [-x for x in quaternion]
+        # # Convert quaternion to roll, pitch, yaw
+        # rotation = R.from_quat(quaternion)
+        # rpy = rotation.as_euler('xyz', degrees=False).tolist()
+        return position + quaternion
     
     def get_ik(self, target_pose: Pose) -> JointState | None:
         request = GetPositionIK.Request()
-
+    
         request.ik_request.group_name = "arm"
         # tf_prefix = self.get_namespace()[1:]
         request.ik_request.pose_stamped.header.frame_id = f"{self.base_}"
         request.ik_request.pose_stamped.header.stamp = self.get_clock().now().to_msg()
         request.ik_request.pose_stamped.pose = target_pose
         request.ik_request.avoid_collisions = True
-        joint_names = ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]
-        constraints = Constraints()
-        current_positions = []
-        current_joint_state_set, current_joint_state = wait_for_message(
-            JointState, self, self.joint_state_topic_, time_to_wait=1.0
-        )
-        for joint_name,current_position in zip(joint_names, current_positions):
-            joint_constraint = JointConstraint()
-            joint_constraint.joint_name = joint_name
-            joint_constraint.position = current_position
-            joint_constraint.tolerance_below = np.pi/3
-            joint_constraint.tolerance_above = np.pi/3
-            joint_constraint.weight = 1.0
-            constraints.joint_constraints.append(joint_constraint)
-        request.ik_request.constraints = constraints
 
         future = self.ik_client_.call_async(request)
 
@@ -193,7 +179,6 @@ class EndEffectorPoseNode(Node):
             return None
 
         return response.solution.joint_state
-
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
@@ -356,16 +341,15 @@ class EvaluateRealRobot:
 
         return obs
     
-    def execute_action(self, end_effector_pose_rpy):
+    def execute_action(self, end_effector_pos, steps):
+        
         ### Stepping function to execute action with robot
         #TODO: Execute Motion
         EE_Pose_Node = EndEffectorPoseNode("exec")
-        end_effector_pose_rpy = [float(value) for value in end_effector_pose_rpy]
-        position = end_effector_pose_rpy[:3]
-        rpy = end_effector_pose_rpy[3:]
-        rotation = R.from_euler('xyz', rpy, degrees=False)
-        quaternion = rotation.as_quat()
-        print(f'action command {end_effector_pose_rpy}')
+        end_effector_pos = [float(value) for value in end_effector_pos]
+        position = end_effector_pos[:3]
+        quaternion = end_effector_pos[3:]
+        print(f'action command {end_effector_pos}')
         # Create Pose message for IK
         target_pose = Pose()
         target_pose.position.x = position[0]
@@ -385,7 +369,7 @@ class EvaluateRealRobot:
         # # Create a JointTrajectory message
         # goal_msg = FollowJointTrajectory.Goal()
         # trajectory_msg = JointTrajectory()
-        kuka_execution = KukaMotionPlanning()
+        kuka_execution = KukaMotionPlanning(steps)
         kuka_execution.send_goal(joint_state)
 
         # # trajectory_msg.joint_names = kuka_execution.joint_names
@@ -407,14 +391,13 @@ class EvaluateRealRobot:
         obs = self.get_observation()
         return obs
     
-
         # the final arch has 2 parts
     ###### Load Pretrained 
     def load_pretrained(self, diffusion):
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/checkpoint_250.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_insertion_vn.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -442,9 +425,10 @@ class EvaluateRealRobot:
         # rewards = self.rewards
         step_idx = self.step_idx
         done = False
+        steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_instertion_vn.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -461,19 +445,16 @@ class EvaluateRealRobot:
                 images_A = np.stack([x['image_A'] for x in obs_deque])
                 images_B = np.stack([x['image_B'] for x in obs_deque])
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
+                nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
 
-                # normalize observation
-                nagent_poses = data_utils.normalize_data(agent_poses, stats=stats['agent_pos'])
                 # images are already normalized to [0,1]
                 nimages = images_A
                 nimages_second_view = images_B
                 # device transfer
                 nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
-
-                # (2,3,480,480)
-                nagent_poses = torch.from_numpy(nagent_poses).to(device, dtype=torch.float32)
-
+                processed_agent_poses = np.hstack((nagent_poses, agent_poses[:,3:]))
+                nagent_poses = torch.from_numpy(processed_agent_poses).to(device, dtype=torch.float32)
                 # infer action
                 with torch.no_grad():
                     # get image features
@@ -491,10 +472,9 @@ class EvaluateRealRobot:
                     noisy_action = torch.randn(
                         (B, diffusion.pred_horizon, diffusion.action_dim), device=device)
                     naction = noisy_action
-                    diffusion_inference_iteration = 20
+                    diffusion_inference_iteration = 100
                     # init scheduler
                     diffusion.noise_scheduler.set_timesteps(diffusion_inference_iteration)
-                    denoising_steps_inference  = 20
 
                     for k in diffusion.noise_scheduler.timesteps:
                         # predict noise
@@ -515,8 +495,8 @@ class EvaluateRealRobot:
                 naction = naction.detach().to('cpu').numpy()
                 # (B, pred_horizon, action_dim)
                 naction = naction[0]
-                action_pred = data_utils.unnormalize_data(naction, stats=stats['action'])
-
+                action_pred = data_utils.unnormalize_data(naction[:,:3], stats=stats['action'])
+                action_pred = np.hstack((action_pred, naction[:,3:]))
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
                 end = start + diffusion.action_horizon
@@ -527,9 +507,12 @@ class EvaluateRealRobot:
                 # without replanning
                 for i in range(len(action)):
                     # stepping env
-                    obs = self.execute_action(action[i])
+                    obs = self.execute_action(action[i], steps)
+                    steps+=1
+
                     # save observations
                     obs_deque.append(obs)
+
                     # and reward/vis
                     # rewards.append(reward)
                     # imgs.append(env.render(mode='rgb_array'))
