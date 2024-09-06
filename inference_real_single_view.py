@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 import gdown
 import os
 from skvideo.io import vwrite
-from real_robot_network import DiffusionPolicy_Real
+from real_robot_network import DiffusionPolicy_Real_SingleView
 from data_util import data_utils
 import cv2
 from train_utils import train_utils
@@ -42,7 +42,6 @@ from rclpy.signals import SignalHandlerGuardCondition
 from rclpy.utilities import timeout_sec_to_nsec
 from kuka_execute import KukaMotionPlanning
 import cv2
-
 
 def wait_for_message(
     msg_type,
@@ -232,11 +231,11 @@ class EvaluateRealRobot:
     # if you have multiple camera views, use seperate encoder weights for each view.
     def __init__(self, max_steps):
 
-        diffusion = DiffusionPolicy_Real(train=False)
+        diffusion = DiffusionPolicy_Real_SingleView(train=False)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # ResNet18 has output dim of 512
-        vision_feature_dim = 1024
+        vision_feature_dim = 512
         # agent_pos is 2 dimensional
         # lowdim_obs_dim = 2
         # # observation feature has 514 dims in total per step
@@ -263,7 +262,6 @@ class EvaluateRealRobot:
         _ = diffusion.nets.to(device)
         # Initialize realsense camera
         pipeline_A = rs.pipeline()
-        pipeline_B = rs.pipeline()
         camera_context = rs.context()
         camera_devices = camera_context.query_devices()
         self.diffusion = diffusion
@@ -272,23 +270,16 @@ class EvaluateRealRobot:
             raise RuntimeError("Two cameras are required, but fewer were detected.")
 
         serial_A = camera_devices[0].get_info(rs.camera_info.serial_number)
-        serial_B = camera_devices[1].get_info(rs.camera_info.serial_number)
 
         # Configure Camera A
         config_A = rs.config()
         config_A.enable_device(serial_A)
         config_A.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
-        # Configure Camera B
-        config_B = rs.config()
-        config_B.enable_device(serial_B)
-        config_B.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-
         # Start pipelines
 
 
         align_A = rs.align(rs.stream.color)
-        align_B = rs.align(rs.stream.color)
 
 
         # self.env = env
@@ -300,15 +291,11 @@ class EvaluateRealRobot:
         self.max_steps = max_steps
         self.ema_nets = ema_nets
         self.step_idx = step_idx
-        self.pipeline_A = pipeline_A
-        self.pipeline_B = pipeline_B
+        self.pipeline_A = pipeline_A        
         self.camera_device = camera_devices
         self.align_A = align_A
-        self.align_B = align_B
-
 
         self.pipeline_A.start(config_A)
-        self.pipeline_B.start(config_B)
 
         obs = self.get_observation()
          # keep a queue of last 2 steps of observations
@@ -317,54 +304,19 @@ class EvaluateRealRobot:
 
         self.obs_deque = obs_deque
 
-
-    def start_position(self):
-        print("starting position")
-        ee_pose = [0.10597, -0.36421, 0.75478, 0.92763, 0.31567, 0.1844, 0.076503]
-        self.hardcode(ee_pose)
-    
-    def up_end_effector(self):
-        print("Up")
-        ee_pose = [0.10597, -0.36421, 0.75478, 0.92763, 0.31567, 0.1844, 0.076503]
-        self.hardcode(ee_pose)    
-    def insertion1(self):
-        pass
-
-    def insertion2(self):
-        pass
-    
-    def insertion3(self):
-        pass
-    
-    def insertion4(self):
-        pass
-
     def get_observation(self):
         ### Get initial observation for the
         EE_Pose_Node = EndEffectorPoseNode("obs")
         obs = {}
         #TODO: Image data from two realsense camera
         pipeline_A = self.pipeline_A
-        pipeline_B = self.pipeline_B
         align_A = self.align_A
-        align_B = self.align_B
 
-        # Create directories if they don't exist
-        os.makedirs("images_A", exist_ok=True)
-        os.makedirs("images_B", exist_ok=True)
-
-        # Camera intrinsics (dummy values, replace with your actual intrinsics)
-        camera_intrinsics = {
-            'K': np.array([[640, 0, 320], [0, 640, 240], [0, 0, 1]], dtype=np.float32),
-            'dist': np.zeros((5, 1))  # No distortion
-        }
-        
         # Camera A pose relative to robot base
         # camera_pose_robot_base = [0.47202, 0.150503, 1.24777, 0.00156901, 0.999158, -0.0183132, -0.036689]
         # camera_translation = np.array(camera_pose_robot_base[:3])
         # camera_rotation = R.from_quat(camera_pose_robot_base[3])
         image_A = None
-        image_B = None
 
         #TODO: Get IIWA pose as [x,y,z, roll, pitch, yaw]
         agent_pos = EE_Pose_Node.get_fk()
@@ -379,82 +331,25 @@ class EvaluateRealRobot:
         aligned_frames_A = align_A.process(frames_A)
         color_frame_A = aligned_frames_A.get_color_frame()
 
-        frames_B = pipeline_B.wait_for_frames()
-        aligned_frames_B = align_B.process(frames_B)
-        color_frame_B = aligned_frames_B.get_color_frame()
         color_image_A = np.asanyarray(color_frame_A.get_data())
         color_image_A.astype(np.float32)
-        color_image_B = np.asanyarray(color_frame_B.get_data())
-        color_image_B.astype(np.float32)
 
         image_A = cv2.resize(color_image_A, (224, 224), interpolation=cv2.INTER_AREA)
-        image_B = cv2.resize(color_image_B, (224, 224), interpolation=cv2.INTER_AREA)
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
-        image_B_rgb = cv2.cvtColor(image_B, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
         # import matplotlib.pyplot as plt
         # plt.imshow(image_A_rgb)
         # plt.show()
-        # plt.imshow(image_B_rgb)
-        # plt.show()
         print(f'current agent position, {agent_pos}')
         # Reshape to (C, H, W)
         image_A = np.transpose(image_A_rgb, (2, 0, 1))
-        image_B = np.transpose(image_B_rgb, (2, 0, 1))
         obs['image_A'] = image_A
-        obs['image_B'] = image_B
         obs['agent_pos'] = agent_pos
         EE_Pose_Node.destroy_node()
 
         return obs
-
-    def hard_code(self, end_effector_pos):
-                ### Stepping function to execute action with robot
-        #TODO: Execute Motion
-        EE_Pose_Node = EndEffectorPoseNode("exec")
-        end_effector_pos = [float(value) for value in end_effector_pos]
-        position = end_effector_pos[:3]
-        quaternion = end_effector_pos[3:]
-        print(f'action command {end_effector_pos}')
-        # Create Pose message for IK
-        target_pose = Pose()
-        target_pose.position.x = position[0]
-        target_pose.position.y = position[1]
-        target_pose.position.z = position[2]
-        target_pose.orientation.x = quaternion[0]
-        target_pose.orientation.y = quaternion[1]
-        target_pose.orientation.z = quaternion[2]
-        target_pose.orientation.w = quaternion[3]
-
-        # Get IK solution
-        joint_state = EE_Pose_Node.get_ik(target_pose)
-        if joint_state is None:
-            EE_Pose_Node.get_logger().error("Failed to get IK solution")
-            return
-        steps = 1000000
-        # # Create a JointTrajectory message
-        # goal_msg = FollowJointTrajectory.Goal()
-        # trajectory_msg = JointTrajectory()
-        kuka_execution = KukaMotionPlanning(steps)
-        kuka_execution.send_goal(joint_state)
-
-        # # trajectory_msg.joint_names = kuka_execution.joint_names
-        # point = JointTrajectoryPoint()
-        # point.positions = joint_state.position
-        # point.time_from_start.sec = 1  # Set the duration for the motion
-        # trajectory_msg.points.append(point)
-        
-        # goal_msg.trajectory = trajectory_msg
-        # kuka_execution.send_goal(trajectory_msg)
-
-        # # Send the trajectory to the action server
-        # kuka_execution._action_client.wait_for_server()
-        # kuka_execution._send_goal_future = kuka_execution._action_client.send_goal_async(goal_msg, feedback_callback=kuka_execution.feedback_callback)
-        # kuka_execution._send_goal_future.add_done_callback(kuka_execution.goal_response_callback)
-        EE_Pose_Node.destroy_node()
-        kuka_execution.destroy_node()
-
+    
     def execute_action(self, end_effector_pos, steps):
         
         ### Stepping function to execute action with robot
@@ -468,7 +363,7 @@ class EvaluateRealRobot:
         target_pose = Pose()
         target_pose.position.x = position[0]
         target_pose.position.y = position[1]
-        target_pose.position.z = position[2]
+        target_pose.position.z = position[2] - 0.03
         target_pose.orientation.x = quaternion[0]
         target_pose.orientation.y = quaternion[1]
         target_pose.orientation.z = quaternion[2]
@@ -511,7 +406,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints_copy/checkpoint_1200.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_100.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -542,7 +437,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats -force_prying.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_processed_insertion.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -556,28 +451,24 @@ class EvaluateRealRobot:
             while not done:
                 B = 1
                 # stack the last obs_horizon number of observations
-                images_A = np.stack([x['image_A'] for x in obs_deque])
-                images_B = np.stack([x['image_B'] for x in obs_deque])
+                images_B = np.stack([x['image_A'] for x in obs_deque])
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
                 nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
 
                 # images are already normalized to [0,1]
-                nimages = images_A
                 nimages_second_view = images_B
                 # device transfer
-                nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
                 processed_agent_poses = np.hstack((nagent_poses, agent_poses[:,3:]))
                 nagent_poses = torch.from_numpy(processed_agent_poses).to(device, dtype=torch.float32)
                 # infer action
                 with torch.no_grad():
                     # get image features
-                    image_features = ema_nets['vision_encoder'](nimages)
+                    image_features = ema_nets['vision_encoder'](nimages_second_view)
                     # (2,512)
-                    image_features_second_view = ema_nets['vision_encoder2'](nimages_second_view)
 
                     # concat with low-dim observations
-                    obs_features = torch.cat([image_features, image_features_second_view, nagent_poses], dim=-1)
+                    obs_features = torch.cat([image_features, nagent_poses], dim=-1)
 
                     # reshape observation to (B,obs_horizon*obs_dim)
                     obs_cond = obs_features.unsqueeze(0).flatten(start_dim=1)
@@ -605,7 +496,7 @@ class EvaluateRealRobot:
                             sample=naction
                         ).prev_sample
 
-                # unnormalize action
+                # unnormalize actionqqqqqqq
                 naction = naction.detach().to('cpu').numpy()
                 # (B, pred_horizon, action_dim)
                 naction = naction[0]
@@ -613,7 +504,7 @@ class EvaluateRealRobot:
                 action_pred = np.hstack((action_pred, naction[:,3:]))
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon + 8
+                end = start + diffusion.action_horizon
                 action = action_pred[start:end,:]
             # (action_horizon, action_dim)
     
