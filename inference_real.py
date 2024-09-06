@@ -468,7 +468,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_insertion_force.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints_copy/checkpoint_1000_sep.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -554,7 +554,7 @@ class EvaluateRealRobot:
                     naction = noisy_action
 
                     # init scheduler
-                    diffusion_inference_iteration = 16
+                    diffusion_inference_iteration = 100
                     diffusion.noise_scheduler.set_timesteps(diffusion_inference_iteration)
                     
                     for k in diffusion.noise_scheduler.timesteps:
@@ -580,7 +580,7 @@ class EvaluateRealRobot:
                 action_pred = np.hstack((action_pred, naction[:,3:]))
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon+4
+                end = start + diffusion.action_horizon
                 action = action_pred[start:end,:]
             # (action_horizon, action_dim)
     
