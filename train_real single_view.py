@@ -1,4 +1,4 @@
-from real_robot_network import DiffusionPolicy_Real
+from real_robot_network import DiffusionPolicy_Real_SingleView
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 import numpy as np
@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 def train_Real_Robot(continue_training=False, start_epoch = 0):
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
-    diffusion = DiffusionPolicy_Real()
+    diffusion = DiffusionPolicy_Real_SingleView()
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
 
@@ -20,7 +20,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
     #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
     #@markdown to load pre-trained weights
 
-    num_epochs = 1400
+    num_epochs = 3000
 
     # Exponential Moving Average
     # accelerates training and improves stability
@@ -31,7 +31,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
     checkpoint_dir = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints"
     # To continue t raining load and set the start epoch
     if continue_training:
-        start_epoch = 1500
+        start_epoch = 800
         checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_{start_epoch}.pth')  # Replace with the correct path
         # Load the saved state_dict into the model
         checkpoint = torch.load(checkpoint_path)
@@ -64,19 +64,15 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
                     # data normalized in dataset
                     # device transfer
                     nimage = nbatch['image'][:,:diffusion.obs_horizon].to(device)
-                    nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
-
                     ### Debug sequential data structure. It shoud be consecutive
                     # import matplotlib.pyplot as plt
                     # imdata1 = nimage[0].cpu()
                     # imdata1 = imdata1.numpy()
-                    # imdata2 = nimage_second_view[0].cpu()
-                    # imdata2 = imdata2.numpy()
           
                     # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
                     # for j in range(2):
                     #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                    #     img = imdata2[j].transpose(1, 2, 0)
+                    #     img = imdata1[j].transpose(1, 2, 0)
                         
                     #     # Plot the image on the corresponding subplot
                     #     axes[j].imshow(img)
@@ -98,14 +94,8 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
                     # (B,obs_horizon,D)
 
                     # encoder vision features
-                    image_features_second_view = diffusion.nets['vision_encoder2'](
-                        nimage_second_view.flatten(end_dim=1))
-                    image_features_second_view = image_features_second_view.reshape(
-                        *nimage_second_view.shape[:2],-1)
-                    # (B,obs_horizon,D)
-
                     # concatenate vision feature and low-dim obs
-                    obs_features = torch.cat([image_features, image_features_second_view, nagent_pos], dim=-1)
+                    obs_features = torch.cat([image_features, nagent_pos], dim=-1)
                     obs_cond = obs_features.flatten(start_dim=1)
                     # (B, obs_horizon * obs_dim)
 
@@ -152,9 +142,9 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
-            if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == num_epochs:
+            if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_prying_orange.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_processed_obs8.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
