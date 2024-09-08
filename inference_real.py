@@ -319,8 +319,8 @@ class EvaluateRealRobot:
         color_image_B = np.asanyarray(color_frame_B.get_data())
         color_image_B.astype(np.float32)
 
-        image_A = cv2.resize(color_image_A, (224, 224), interpolation=cv2.INTER_AREA)
-        image_B = cv2.resize(color_image_B, (224, 224), interpolation=cv2.INTER_AREA)
+        image_A = cv2.resize(color_image_A, (360, 240), interpolation=cv2.INTER_AREA)
+        image_B = cv2.resize(color_image_B, (360, 240), interpolation=cv2.INTER_AREA)
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
         image_B_rgb = cv2.cvtColor(image_B, cv2.COLOR_BGR2RGB)
@@ -538,7 +538,7 @@ def main():
     # Initialize RealSense pipelines for both cameras
     rclpy.init()
     try:  
-        max_steps = 800
+        max_steps = 300
         # Evaluate Real Robot Environment
         eval_real_robot = EvaluateRealRobot(max_steps)
         eval_real_robot.inference()

@@ -20,7 +20,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
     #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
     #@markdown to load pre-trained weights
 
-    num_epochs = 3000
+    num_epochs = 1400
 
     # Exponential Moving Average
     # accelerates training and improves stability
@@ -67,24 +67,12 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
                     nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
 
                     ### Debug sequential data structure. It shoud be consecutive
-                    import matplotlib.pyplot as plt
+                    # import matplotlib.pyplot as plt
                     imdata1 = nimage[0].cpu()
                     imdata1 = imdata1.numpy()
                     imdata2 = nimage_second_view[0].cpu()
                     imdata2 = imdata2.numpy()
           
-                    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-                    # for j in range(2):
-                    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                    #     img = imdata2[j].transpose(1, 2, 0)
-                        
-                    #     # Plot the image on the corresponding subplot
-                    #     axes[j].imshow(img)
-                    #     axes[j].axis('off')  # Hide the axes
-
-                    #     # Show the plot
-                    # plt.show()  
-
 
                     nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
                     naction = nbatch['action'].to(device)
@@ -152,9 +140,9 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
-            if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
+            if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_prying_orange.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
