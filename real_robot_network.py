@@ -308,7 +308,7 @@ class DiffusionPolicy_Real:
         action_dim = 7
         # parameters
         pred_horizon = 16
-        obs_horizon = 2
+        obs_horizon = 6
         action_horizon = 8
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8

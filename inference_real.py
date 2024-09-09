@@ -271,8 +271,8 @@ class EvaluateRealRobot:
         if len(camera_devices) < 2:
             raise RuntimeError("Two cameras are required, but fewer were detected.")
 
-        serial_A = camera_devices[0].get_info(rs.camera_info.serial_number)
-        serial_B = camera_devices[1].get_info(rs.camera_info.serial_number)
+        serial_A = camera_devices[1].get_info(rs.camera_info.serial_number)
+        serial_B = camera_devices[0].get_info(rs.camera_info.serial_number)
 
         # Configure Camera A
         config_A = rs.config()
@@ -511,7 +511,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints_copy/checkpoint_1200.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2400_insertion_vn_obs8.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -542,7 +542,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats -force_prying.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats (4).json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -613,7 +613,7 @@ class EvaluateRealRobot:
                 action_pred = np.hstack((action_pred, naction[:,3:]))
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon + 8
+                end = start + diffusion.action_horizon
                 action = action_pred[start:end,:]
             # (action_horizon, action_dim)
     
