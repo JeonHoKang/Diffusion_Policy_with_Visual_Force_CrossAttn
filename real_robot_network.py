@@ -308,7 +308,7 @@ class DiffusionPolicy_Real:
         action_dim = 7
         # parameters
         pred_horizon = 16
-        obs_horizon = 6
+        obs_horizon = 2
         action_horizon = 8
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
@@ -496,7 +496,7 @@ class DiffusionPolicy_Real_SingleView:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=18,
+                batch_size=64,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer

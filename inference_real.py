@@ -317,28 +317,6 @@ class EvaluateRealRobot:
 
         self.obs_deque = obs_deque
 
-
-    def start_position(self):
-        print("starting position")
-        ee_pose = [0.10597, -0.36421, 0.75478, 0.92763, 0.31567, 0.1844, 0.076503]
-        self.hardcode(ee_pose)
-    
-    def up_end_effector(self):
-        print("Up")
-        ee_pose = [0.10597, -0.36421, 0.75478, 0.92763, 0.31567, 0.1844, 0.076503]
-        self.hardcode(ee_pose)    
-    def insertion1(self):
-        pass
-
-    def insertion2(self):
-        pass
-    
-    def insertion3(self):
-        pass
-    
-    def insertion4(self):
-        pass
-
     def get_observation(self):
         ### Get initial observation for the
         EE_Pose_Node = EndEffectorPoseNode("obs")
