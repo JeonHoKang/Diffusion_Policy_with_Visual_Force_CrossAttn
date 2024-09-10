@@ -327,9 +327,6 @@ class EvaluateRealRobot:
         align_A = self.align_A
         align_B = self.align_B
 
-        # Create directories if they don't exist
-        os.makedirs("images_A", exist_ok=True)
-        os.makedirs("images_B", exist_ok=True)
 
         # Camera intrinsics (dummy values, replace with your actual intrinsics)
         camera_intrinsics = {
@@ -365,17 +362,17 @@ class EvaluateRealRobot:
         color_image_B = np.asanyarray(color_frame_B.get_data())
         color_image_B.astype(np.float32)
 
-        image_A = cv2.resize(color_image_A, (360, 240), interpolation=cv2.INTER_AREA)
-        image_B = cv2.resize(color_image_B, (360, 240), interpolation=cv2.INTER_AREA)
+        image_A = cv2.resize(color_image_A, (320, 240), interpolation=cv2.INTER_AREA)
+        image_B = cv2.resize(color_image_B, (320, 240), interpolation=cv2.INTER_AREA)
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
         image_B_rgb = cv2.cvtColor(image_B, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        # import matplotlib.pyplot as plt
-        # plt.imshow(image_A_rgb)
-        # plt.show()
-        # plt.imshow(image_B_rgb)
-        # plt.show()
+        import matplotlib.pyplot as plt
+        plt.imshow(image_A_rgb)
+        plt.show()
+        plt.imshow(image_B_rgb)
+        plt.show()
         print(f'current agent position, {agent_pos}')
         # Reshape to (C, H, W)
         image_A = np.transpose(image_A_rgb, (2, 0, 1))
@@ -489,10 +486,10 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2400_insertion_vn_obs8.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_prying_orange_vn.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
-            #   if not os.path.isfile(ckpt_path):
-            #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
+            #   if not os.path.isfile(ckpt_path):qq
+            #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
             #       gdown.download(id=id, output=ckpt_path, quiet=False)
 
             state_dict = torch.load(ckpt_path, map_location='cuda')
@@ -520,7 +517,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats (4).json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/stats_orange_vn.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
