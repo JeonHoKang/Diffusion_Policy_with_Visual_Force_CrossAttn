@@ -326,13 +326,13 @@ class DiffusionPolicy_Real:
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
            # Save the stats to a file
-            with open('stats.json', 'w') as f:
+            with open('stats_orange_force.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=64,
+                batch_size=48,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
