@@ -20,7 +20,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
     #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
     #@markdown to load pre-trained weights
 
-    num_epochs = 1400
+    num_epochs = 3000
 
     # Exponential Moving Average
     # accelerates training and improves stability

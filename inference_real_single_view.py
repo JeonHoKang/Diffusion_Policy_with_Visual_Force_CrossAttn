@@ -334,13 +334,13 @@ class EvaluateRealRobot:
         color_image_A = np.asanyarray(color_frame_A.get_data())
         color_image_A.astype(np.float32)
 
-        image_A = cv2.resize(color_image_A, (224, 224), interpolation=cv2.INTER_AREA)
+        image_A = cv2.resize(color_image_A, (320, 240), interpolation=cv2.INTER_AREA)
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        # import matplotlib.pyplot as plt
-        # plt.imshow(image_A_rgb)
-        # plt.show()
+        import matplotlib.pyplot as plt
+        plt.imshow(image_A_rgb)
+        plt.show()
         print(f'current agent position, {agent_pos}')
         # Reshape to (C, H, W)
         image_A = np.transpose(image_A_rgb, (2, 0, 1))
@@ -363,7 +363,7 @@ class EvaluateRealRobot:
         target_pose = Pose()
         target_pose.position.x = position[0]
         target_pose.position.y = position[1]
-        target_pose.position.z = position[2] - 0.03
+        target_pose.position.z = position[2] 
         target_pose.orientation.x = quaternion[0]
         target_pose.orientation.y = quaternion[1]
         target_pose.orientation.z = quaternion[2]
@@ -406,7 +406,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_100.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoint_800_imageB_vn.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -437,7 +437,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_processed_insertion.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_single_view_vn.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)

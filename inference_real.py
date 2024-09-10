@@ -486,7 +486,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_prying_orange_vn.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_prying_orange.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
@@ -517,7 +517,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/stats_orange_vn.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_orange_vn.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -534,6 +534,7 @@ class EvaluateRealRobot:
                 images_A = np.stack([x['image_A'] for x in obs_deque])
                 images_B = np.stack([x['image_B'] for x in obs_deque])
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
+                print(agent_poses)
                 nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
 
                 # images are already normalized to [0,1]
@@ -582,10 +583,11 @@ class EvaluateRealRobot:
 
                 # unnormalize action
                 naction = naction.detach().to('cpu').numpy()
-                # (B, pred_horizon, action_dim)
+                # (B, pred_horizon, action_dim)q
                 naction = naction[0]
                 action_pred = data_utils.unnormalize_data(naction[:,:3], stats=stats['action'])
                 action_pred = np.hstack((action_pred, naction[:,3:]))
+      
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
                 end = start + diffusion.action_horizon
