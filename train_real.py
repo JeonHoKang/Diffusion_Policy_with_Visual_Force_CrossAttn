@@ -20,7 +20,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
     #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
     #@markdown to load pre-trained weights
 
-    num_epochs = 1600
+    num_epochs = 3000
 
     # Exponential Moving Average
     # accelerates training and improves stability
@@ -28,7 +28,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
     ema = EMAModel(
         parameters=diffusion.nets.parameters(),
         power=0.75)
-    checkpoint_dir = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints"
+    checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
     # To continue t raining load and set the start epoch
     if continue_training:
         start_epoch = 1500
@@ -70,22 +70,22 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
 
                     ### Debug sequential data structure. It shoud be consecutive
                     # import matplotlib.pyplot as plt
-                    imdata1 = nimage[0].cpu()
-                    imdata1 = imdata1.numpy()
-                    imdata2 = nimage_second_view[0].cpu()
-                    imdata2 = imdata2.numpy()
+                    # imdata1 = nimage[0].cpu()
+                    # imdata1 = imdata1.numpy()
+                    # imdata2 = nimage_second_view[0].cpu()
+                    # imdata2 = imdata2.numpy()
           
-                    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-                    for j in range(2):
-                        # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                        img = imdata2[j].transpose(1, 2, 0)
+                    # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+                    # for j in range(2):
+                    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+                    #     img = imdata2[j].transpose(1, 2, 0)
                         
-                        # Plot the image on the corresponding subplot
-                        axes[j].imshow(img)
-                        axes[j].axis('off')  # Hide the axes
+                    #     # Plot the image on the corresponding subplot
+                    #     axes[j].imshow(img)
+                    #     axes[j].axis('off')  # Hide the axes
 
-                        # Show the plot
-                    plt.show()  
+                    #     # Show the plot
+                    # plt.show()  
 
 
                     nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
