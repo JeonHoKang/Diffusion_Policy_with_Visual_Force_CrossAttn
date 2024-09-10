@@ -406,7 +406,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoint_800_imageB_vn.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_imageB_vn.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
