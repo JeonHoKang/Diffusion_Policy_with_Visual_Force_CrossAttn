@@ -737,7 +737,7 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/orange_sd_66_imgB.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/radio1.zarr.zip"
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
     def __init__(self, train=True):
@@ -780,13 +780,13 @@ class DiffusionPolicy_Real:
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
            # Save the stats to a file
-            with open('stats_orange_vn.json', 'w') as f:
+            with open('stats_force_single_view_clock1.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=48,
+                batch_size=64,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
@@ -947,7 +947,7 @@ class DiffusionPolicy_Real_SingleView:
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
            # Save the stats to a file
-            with open('stats_force_singleview.json', 'w') as f:
+            with open('stats_force_radio.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader
