@@ -352,10 +352,10 @@ class EvaluateRealRobot:
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        import matplotlib.pyplot as plt
-        plt.imshow(image_A_rgb)
-        plt.show()
-        print(f'current agent position, {agent_pos}')
+        # import matplotlib.pyplot as plt
+        # plt.imshow(image_A_rgb)
+        # plt.show()
+        # print(f'current agent position, {agent_pos}')q
         # Reshape to (C, H, W)
         image_A = np.transpose(image_A_rgb, (2, 0, 1))
         obs['image_A'] = image_A
@@ -374,10 +374,10 @@ class EvaluateRealRobot:
         end_effector_pos = [float(value) for value in end_effector_pos]
         position = end_effector_pos[:3]
         quaternion = end_effector_pos[3:]
-        print(f'action command {end_effector_pos}')
+        # print(f'action command {end_effector_pos}')
         # Create Pose message for IK
         target_pose = Pose()
-        target_pose.position.x = position[0]
+        target_pose.position.x = position[0] 
         target_pose.position.y = position[1]
         target_pose.position.z = position[2] 
         target_pose.orientation.x = quaternion[0]
@@ -422,7 +422,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1200_force_single_view.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_force_singleview_clock1.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -464,7 +464,7 @@ class EvaluateRealRobot:
             # Convert stats['action']['min'] and ['max'] to numpy arrays with float32 type
             stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
             stats['action']['max'] = np.array(stats['action']['max'], dtype=np.float32)
-
+        force_status = list()
         with tqdm(total=max_steps, desc="Eval Real Robot") as pbar:
             while not done:
                 B = 1
@@ -472,7 +472,6 @@ class EvaluateRealRobot:
                 images_B = np.stack([x['image_A'] for x in obs_deque])
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
                 force_obs = np.stack([x['force'] for x in obs_deque])
-
                 nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
 
                 nforce_mag, nforce_vec = data_utils.normalize_force_vector(force_obs)
@@ -543,6 +542,7 @@ class EvaluateRealRobot:
 
                     # save observations
                     obs_deque.append(obs)
+                    force_status.append(obs['force'])
 
                     # and reward/vis
                     # rewards.append(reward)
@@ -560,6 +560,34 @@ class EvaluateRealRobot:
 
         # print('Score: ', max(rewards))
         # return imgs
+        force = np.array(force_status)
+        Fx = force[:, 0]
+        Fy = force[:, 1]
+        Fz = force[:, 2]
+
+        # Create a time vector or use index for x-axis
+        time = np.arange(len(Fx))
+
+        # Plotting the force components
+        plt.figure(figsize=(10, 6))
+        plt.plot(time, Fx, label='Fx', color='r', linestyle='-', linewidth=2)
+        plt.plot(time, Fy, label='Fy', color='g', linestyle='--', linewidth=2)
+        plt.plot(time, Fz, label='Fz', color='b', linestyle='-.', linewidth=2)
+
+        # Add titles and labels
+        plt.title('Force Components Over Time', fontsize=16)
+        plt.xlabel('Time', fontsize=14)
+        plt.ylabel('Force (N)', fontsize=14)
+
+        # Add a grid
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+        # Add a legend
+        plt.legend(loc='best', fontsize=12)
+
+        # Show the plot
+        plt.tight_layout()
+        plt.show()
 
 
 def main():
@@ -567,7 +595,7 @@ def main():
     # Initialize RealSense pipelines for both cameras
     rclpy.init()
     try:  
-        max_steps = 100
+        max_steps = 20
         # Evaluate Real Robot Environment
         eval_real_robot = EvaluateRealRobot(max_steps)
         eval_real_robot.inference()
