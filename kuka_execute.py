@@ -21,7 +21,7 @@ class KukaMotionPlanning(Node):
         trajectory_msg.joint_names = self.joint_names
         point = JointTrajectoryPoint()
         point.positions = list(joint_trajectories.position)
-        if self.current_step < 15 :
+        if self.current_step < 3 :
             point.time_from_start.sec = 3  # 3 seconds for the first point
         elif self.current_step > 5000:
             point.time_from_start.sec = 10

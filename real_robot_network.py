@@ -330,7 +330,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=64,
+                batch_size=48,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
@@ -496,6 +496,7 @@ class DiffusionPolicy_Real_SingleView:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
+                batch_size=64,
                 batch_size=64,
                 num_workers=4,
                 shuffle=True,
