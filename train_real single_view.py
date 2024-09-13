@@ -28,7 +28,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
     ema = EMAModel(
         parameters=diffusion.nets.parameters(),
         power=0.75)
-    checkpoint_dir = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints"
+    checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
     # To continue t raining load and set the start epoch
     if continue_training:
         start_epoch = 800
@@ -144,7 +144,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_processed_obs8.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_radio_vn.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
