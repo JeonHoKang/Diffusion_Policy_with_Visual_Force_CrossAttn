@@ -338,9 +338,9 @@ class EvaluateRealRobot:
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        import matplotlib.pyplot as plt
-        plt.imshow(image_A_rgb)
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # plt.imshow(image_A_rgb)
+        # plt.show()
         print(f'current agent position, {agent_pos}')
         # Reshape to (C, H, W)
         image_A = np.transpose(image_A_rgb, (2, 0, 1))
@@ -406,7 +406,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_orange_singleview_vn_clock1.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2000_mouse_vn.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=t"
@@ -437,7 +437,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/stats_orange_singleview_vn.jsonqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_mouse_vn.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
