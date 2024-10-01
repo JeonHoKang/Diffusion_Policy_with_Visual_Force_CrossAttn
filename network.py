@@ -9,7 +9,7 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 import gdown
 import os
 from data_util import PushTImageDataset
-from train_utils import train_utils
+from train_utils import train_utils, SimpleViTEncoder
 #@markdown ### **Network**
 #@markdown
 #@markdown Defines a 1D UNet architecture `ConditionalUnet1D`
@@ -275,6 +275,7 @@ if not os.path.isfile(dataset_path):
 
 
 
+import timm
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy:
@@ -282,7 +283,7 @@ class DiffusionPolicy:
 
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
-        vision_encoder = train_utils().get_resnet('resnet18')
+        vision_encoder = timm.create_model('vit_base_patch16_224', pretrained=True)
         # Define Second vision encoder
 
 
@@ -291,7 +292,7 @@ class DiffusionPolicy:
         # performance will tank if you forget to do this!
         vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
         # ResNet18 has output dim of 512
-        vision_feature_dim = 512
+        vision_feature_dim = 768
         # agent_pos is 2 dimensional
         lowdim_obs_dim = 2
         # observation feature has 514 dims in total per step
