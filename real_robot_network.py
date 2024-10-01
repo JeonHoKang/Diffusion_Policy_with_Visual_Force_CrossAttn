@@ -737,7 +737,7 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/radio1.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/mouse1.zarr.zip"
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
     def __init__(self, train=True):
@@ -780,7 +780,7 @@ class DiffusionPolicy_Real:
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
            # Save the stats to a file
-            with open('stats_force_single_view_clock1.json', 'w') as f:
+            with open('stats_force_single_view_mouse.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader
@@ -914,7 +914,7 @@ class DiffusionPolicy_Real_SingleView:
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
-        vision_encoder = train_utils().get_resnet('resnet18')
+        vision_encoder = train_utils().get_resnet('resnet34')
         # Define Second vision encoder
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA

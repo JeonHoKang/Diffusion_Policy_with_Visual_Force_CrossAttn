@@ -143,9 +143,9 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
-            if (epoch_idx + 1) % 300 == 0 or (epoch_idx + 1) == num_epochs:
+            if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_force_radio.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_force_mouse_resnet34.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
