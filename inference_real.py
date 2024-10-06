@@ -42,7 +42,7 @@ from rclpy.signals import SignalHandlerGuardCondition
 from rclpy.utilities import timeout_sec_to_nsec
 from kuka_execute import KukaMotionPlanning
 import cv2
-
+from rotation_utils import quat_from_rot_m, rot6d_to_mat, mat_to_rot6d, quat_to_rot_m, normalize
 
 def wait_for_message(
     msg_type,
@@ -306,9 +306,9 @@ class EvaluateRealRobot:
         self.align_A = align_A
         self.align_B = align_B
 
-
         self.pipeline_A.start(config_A)
         self.pipeline_B.start(config_B)
+        time.sleep(4)
 
         obs = self.get_observation()
          # keep a queue of last 2 steps of observations
@@ -352,6 +352,7 @@ class EvaluateRealRobot:
         #####
         frames_A = pipeline_A.wait_for_frames()
         aligned_frames_A = align_A.process(frames_A)
+
         color_frame_A = aligned_frames_A.get_color_frame()
 
         frames_B = pipeline_B.wait_for_frames()
@@ -361,12 +362,34 @@ class EvaluateRealRobot:
         color_image_A.astype(np.float32)
         color_image_B = np.asanyarray(color_frame_B.get_data())
         color_image_B.astype(np.float32)
-
+        
         image_A = cv2.resize(color_image_A, (320, 240), interpolation=cv2.INTER_AREA)
-        image_B = cv2.resize(color_image_B, (320, 240), interpolation=cv2.INTER_AREA)
+
+        # Get the image dimensions
+        height_B, width_B, _ = color_image_B.shape
+
+        # Define the center point
+        center_x, center_y = width_B // 2, height_B // 2
+
+        # Define the crop size
+        crop_width, crop_height = 320, 240
+
+        # Calculate the top-left corner of the crop box
+        x1 = max(center_x - crop_width // 2, 0)
+        y1 = max(center_y - crop_height // 2, 0)
+
+        # Calculate the bottom-right corner of the crop box
+        x2 = min(center_x + crop_width // 2, width_B)
+        y2 = min(center_y + crop_height // 2, height_B)
+        cropped_image_B = color_image_B[y1:y2, x1:x2]
+
+ 
         # Convert BGR to RGB for Matplotlib visualization
         image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
-        image_B_rgb = cv2.cvtColor(image_B, cv2.COLOR_BGR2RGB)
+        image_B_rgb = cv2.cvtColor(cropped_image_B, cv2.COLOR_BGR2RGB)
+        
+
+
          ### Visualizing purposes
         import matplotlib.pyplot as plt
         plt.imshow(image_A_rgb)
@@ -374,61 +397,66 @@ class EvaluateRealRobot:
         plt.imshow(image_B_rgb)
         plt.show()
         print(f'current agent position, {agent_pos}')
+        agent_position = agent_pos[:3]
+        agent_rotation = agent_pos[3:]
+        rot_m_agent = quat_to_rot_m(agent_rotation)
+        rot_6d = mat_to_rot6d(rot_m_agent)
+        agent_pos_10d = np.hstack((agent_position, rot_6d))
         # Reshape to (C, H, W)
         image_A = np.transpose(image_A_rgb, (2, 0, 1))
         image_B = np.transpose(image_B_rgb, (2, 0, 1))
         obs['image_A'] = image_A
         obs['image_B'] = image_B
-        obs['agent_pos'] = agent_pos
+        obs['agent_pos'] = agent_pos_10d
         EE_Pose_Node.destroy_node()
 
         return obs
 
-    def hard_code(self, end_effector_pos):
-                ### Stepping function to execute action with robot
-        #TODO: Execute Motion
-        EE_Pose_Node = EndEffectorPoseNode("exec")
-        end_effector_pos = [float(value) for value in end_effector_pos]
-        position = end_effector_pos[:3]
-        quaternion = end_effector_pos[3:]
-        print(f'action command {end_effector_pos}')
-        # Create Pose message for IK
-        target_pose = Pose()
-        target_pose.position.x = position[0]
-        target_pose.position.y = position[1]
-        target_pose.position.z = position[2]
-        target_pose.orientation.x = quaternion[0]
-        target_pose.orientation.y = quaternion[1]
-        target_pose.orientation.z = quaternion[2]
-        target_pose.orientation.w = quaternion[3]
+    # def hard_code(self, end_effector_pos):
+    #             ### Stepping function to execute action with robot
+    #     #TODO: Execute Motion
+    #     EE_Pose_Node = EndEffectorPoseNode("exec")
+    #     end_effector_pos = [float(value) for value in end_effector_pos]
+    #     position = end_effector_pos[:3]
+    #     quaternion = end_effector_pos[3:]
+    #     print(f'action command {end_effector_pos}')
+    #     # Create Pose message for IK
+    #     target_pose = Pose()
+    #     target_pose.position.x = position[0]
+    #     target_pose.position.y = position[1]
+    #     target_pose.position.z = position[2]
+    #     target_pose.orientation.x = quaternion[0]
+    #     target_pose.orientation.y = quaternion[1]
+    #     target_pose.orientation.z = quaternion[2]
+    #     target_pose.orientation.w = quaternion[3]
 
-        # Get IK solution
-        joint_state = EE_Pose_Node.get_ik(target_pose)
-        if joint_state is None:
-            EE_Pose_Node.get_logger().error("Failed to get IK solution")
-            return
-        steps = 1000000
-        # # Create a JointTrajectory message
-        # goal_msg = FollowJointTrajectory.Goal()
-        # trajectory_msg = JointTrajectory()
-        kuka_execution = KukaMotionPlanning(steps)
-        kuka_execution.send_goal(joint_state)
+    #     # Get IK solution
+    #     joint_state = EE_Pose_Node.get_ik(target_pose)
+    #     if joint_state is None:
+    #         EE_Pose_Node.get_logger().error("Failed to get IK solution")
+    #         return
+    #     steps = 1000000
+    #     # # Create a JointTrajectory message
+    #     # goal_msg = FollowJointTrajectory.Goal()
+    #     # trajectory_msg = JointTrajectory()
+    #     kuka_execution = KukaMotionPlanning(steps)
+    #     kuka_execution.send_goal(joint_state)
 
-        # # trajectory_msg.joint_names = kuka_execution.joint_names
-        # point = JointTrajectoryPoint()
-        # point.positions = joint_state.position
-        # point.time_from_start.sec = 1  # Set the duration for the motion
-        # trajectory_msg.points.append(point)
+    #     # # trajectory_msg.joint_names = kuka_execution.joint_names
+    #     # point = JointTrajectoryPoint()
+    #     # point.positions = joint_state.position
+    #     # point.time_from_start.sec = 1  # Set the duration for the motion
+    #     # trajectory_msg.points.append(point)
         
-        # goal_msg.trajectory = trajectory_msg
-        # kuka_execution.send_goal(trajectory_msg)
+    #     # goal_msg.trajectory = trajectory_msg
+    #     # kuka_execution.send_goal(trajectory_msg)
 
-        # # Send the trajectory to the action server
-        # kuka_execution._action_client.wait_for_server()
-        # kuka_execution._send_goal_future = kuka_execution._action_client.send_goal_async(goal_msg, feedback_callback=kuka_execution.feedback_callback)
-        # kuka_execution._send_goal_future.add_done_callback(kuka_execution.goal_response_callback)
-        EE_Pose_Node.destroy_node()
-        kuka_execution.destroy_node()
+    #     # # Send the trajectory to the action server
+    #     # kuka_execution._action_client.wait_for_server()
+    #     # kuka_execution._send_goal_future = kuka_execution._action_client.send_goal_async(goal_msg, feedback_callback=kuka_execution.feedback_callback)
+    #     # kuka_execution._send_goal_future.add_done_callback(kuka_execution.goal_response_callback)
+    #     EE_Pose_Node.destroy_node()
+    #     kuka_execution.destroy_node()
 
     def execute_action(self, end_effector_pos, steps):
         
@@ -437,7 +465,9 @@ class EvaluateRealRobot:
         EE_Pose_Node = EndEffectorPoseNode("exec")
         end_effector_pos = [float(value) for value in end_effector_pos]
         position = end_effector_pos[:3]
-        quaternion = end_effector_pos[3:]
+        rot6d = end_effector_pos[3:]
+        rot_m = rot6d_to_mat(np.array(rot6d))
+        quaternion = quat_from_rot_m(rot_m)
         print(f'action command {end_effector_pos}')
         # Create Pose message for IK
         target_pose = Pose()
@@ -486,7 +516,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_prying_orange.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_clock_clean_res34.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
@@ -517,7 +547,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_orange_vn.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_res34.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -534,7 +564,7 @@ class EvaluateRealRobot:
                 images_A = np.stack([x['image_A'] for x in obs_deque])
                 images_B = np.stack([x['image_B'] for x in obs_deque])
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
-                print(agent_poses)
+                # print(agent_poses)
                 nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
 
                 # images are already normalized to [0,1]
