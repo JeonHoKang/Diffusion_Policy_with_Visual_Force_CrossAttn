@@ -280,18 +280,22 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_117_imgb.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98.zarr.zip"
 
+import timm
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
-    def __init__(self, train=True):
+    def __init__(self, train=True, vision_encoder2 = "resnet"):
 
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
         vision_encoder = train_utils().get_resnet('resnet18')
         # Define Second vision encoder
-        vision_encoder2 = train_utils().get_resnet('resnet18')
+        if vision_encoder2 == "resnet":
+           vision_encoder2 = train_utils().get_resnet('resnet18')
+        elif vision_encoder2 == "Transformer":
+            vision_encoder2 = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
 
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
@@ -299,13 +303,13 @@ class DiffusionPolicy_Real:
         vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
         vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         # ResNet18 has output dim of 512 X 2 because two views
-        vision_feature_dim = 1024
+        vision_feature_dim = 512+ 512
         # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
-        lowdim_obs_dim = 7
+        lowdim_obs_dim = 9
         # observation feature has 514 dims in total per step
         obs_dim = vision_feature_dim + lowdim_obs_dim
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
-        action_dim = 7
+        action_dim = 9
         # parameters
         pred_horizon = 16
         obs_horizon = 2
@@ -324,13 +328,13 @@ class DiffusionPolicy_Real:
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
            # Save the stats to a file
-            with open('stats_radio_vn.json', 'w') as f:
+            with open('stats_clock_clean_res34.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=48,
+                batch_size=12,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
@@ -490,7 +494,7 @@ class DiffusionPolicy_Real_SingleView:
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
            # Save the stats to a file
-            with open('stats_processed_insertion.json', 'w') as f:
+            with open('stats_clock_clean_resnet.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader

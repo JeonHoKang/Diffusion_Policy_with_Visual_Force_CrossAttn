@@ -106,7 +106,22 @@ class data_utils:
         
         return quaternion_array
     
+def center_crop(images, crop_height, crop_width):
+    # Get original dimensions
+    N, C, H, W = images.shape
+    assert crop_height <= H and crop_width <= W, "Crop size should be smaller than the original size"
+    
+    # Calculate the center
+    start_y = (H - crop_height) // 2
+    start_x = (W - crop_width) // 2
+    
+    # Perform cropping
+    cropped_images = images[:, :, start_y:start_y + crop_height, start_x:start_x + crop_width]
+    
+    return cropped_images
+
 # dataset
+
 class PushTImageDataset(torch.utils.data.Dataset):
     def __init__(self,
                  dataset_path: str,
@@ -120,6 +135,7 @@ class PushTImageDataset(torch.utils.data.Dataset):
         # float32, [0,1], (N,96,96,3)
         train_image_data = dataset_root['data']['img'][:]
         train_image_data = np.moveaxis(train_image_data, -1,1)
+        # Perform center cropping to 224x224
         # (N,3,96,96)
         # (N, D)
         train_data = {
@@ -186,7 +202,8 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                  dataset_path: str,
                  pred_horizon: int,
                  obs_horizon: int,
-                 action_horizon: int):
+                 action_horizon: int,
+                 Transformer: bool = False):
 
         # read from zarr dataset
         dataset_root = zarr.open(dataset_path, 'r')
@@ -196,12 +213,15 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         train_image_data = np.moveaxis(train_image_data, -1,1)
         train_image_data_second_view = dataset_root['data']['images_B'][:]
         train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
+        if Transformer:
+            cropped_train_image_data = center_crop(train_image_data_second_view, 224, 224)
+
         # (N,3,96,96)
         # (N, D)
         train_data = {
             # first seven dims of state vector are agent (i.e. gripper) locations
             # Seven because we will use quaternion 
-            'agent_pos': dataset_root['data']['state'][:,:7],
+            'agent_pos': dataset_root['data']['state'][:,:9],
             'action': dataset_root['data']['action']
         }
         episode_ends = dataset_root['meta']['episode_ends'][:]
@@ -220,7 +240,8 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         for key, data in train_data.items():
             stats[key] = data_utils.get_data_stats(data[:,:3])
             normalized_position = data_utils.normalize_data(data[:,:3], stats[key])
-            normalized_orientation = data_utils.process_quaternion(data[:,3:7])
+            normalized_orientation = data[:,3:9]
+            # normalized_orientation = data_utils.process_quaternion(data[:,3:7])
             normalized_train_data[key] = np.hstack((normalized_position, normalized_orientation))
             ## TODO: Add code that will handle - and + sign for quaternion
 
@@ -279,7 +300,7 @@ class RealRobotDataSet_SingleView(torch.utils.data.Dataset):
         train_data = {
             # first seven dims of state vector are agent (i.e. gripper) locations
             # Seven because we will use quaternion 
-            'agent_pos': dataset_root['data']['state'][:,:7],
+            'agent_pos': dataset_root['data']['state'][:,:9],
             'action': dataset_root['data']['action']
         }
         episode_ends = dataset_root['meta']['episode_ends'][:]
