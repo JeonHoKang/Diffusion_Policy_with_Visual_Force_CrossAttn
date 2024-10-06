@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 
 torch.cuda.empty_cache()
 
-def train_Real_Robot(continue_training=False, start_epoch = 0, vision_encoder2 = "resnet", action_def = "delta"):
+def train_Real_Robot(continue_training=False, start_epoch = 0, encoder = "resnet", action_def = "delta"):
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
-    diffusion = DiffusionPolicy_Real(vision_encoder2= vision_encoder2, action_def = action_def)
+    diffusion = DiffusionPolicy_Real(encoder= encoder, action_def = action_def)
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
 
@@ -173,4 +173,4 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, vision_encoder2 =
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=False, vision_encoder2 = "resnet", action_def="delta")
+    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta")

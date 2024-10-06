@@ -285,16 +285,16 @@ dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98_
 import timm
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
-    def __init__(self, train=True, vision_encoder2 = "resnet", action_def = "delta"):
+    def __init__(self, train=True, encoder = "resnet", action_def = "delta"):
 
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
         vision_encoder = train_utils().get_resnet('resnet18')
         # Define Second vision encoder
-        if vision_encoder2 == "resnet":
+        if encoder == "resnet":
            vision_encoder2 = train_utils().get_resnet('resnet18')
-        elif vision_encoder2 == "Transformer":
+        elif encoder == "Transformer":
             vision_encoder2 = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
 
         # IMPORTANT!
@@ -334,7 +334,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=48,
+                batch_size=64,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
