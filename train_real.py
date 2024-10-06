@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 
 torch.cuda.empty_cache()
 
-def train_Real_Robot(continue_training=False, start_epoch = 0):
+def train_Real_Robot(continue_training=False, start_epoch = 0, vision_encoder2 = "resnet", action_def = "delta"):
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
-    diffusion = DiffusionPolicy_Real()
+    diffusion = DiffusionPolicy_Real(vision_encoder2= vision_encoder2, action_def = action_def)
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
 
@@ -155,7 +155,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_res34.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_res18_{action_def}.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
@@ -173,4 +173,4 @@ def train_Real_Robot(continue_training=False, start_epoch = 0):
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=False)
+    train_Real_Robot(continue_training=False, vision_encoder2 = "resnet", action_def="delta")

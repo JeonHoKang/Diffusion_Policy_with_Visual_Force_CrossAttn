@@ -280,12 +280,12 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98_delta.zarr.zip"
 
 import timm
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
-    def __init__(self, train=True, vision_encoder2 = "resnet"):
+    def __init__(self, train=True, vision_encoder2 = "resnet", action_def = "delta"):
 
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
@@ -328,13 +328,13 @@ class DiffusionPolicy_Real:
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
            # Save the stats to a file
-            with open('stats_clock_clean_res34.json', 'w') as f:
+            with open(f'stats_clock_clean_res18_{action_def}.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=12,
+                batch_size=48,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
