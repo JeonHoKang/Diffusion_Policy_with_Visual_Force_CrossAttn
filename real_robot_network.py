@@ -293,6 +293,7 @@ class DiffusionPolicy_Real:
         vision_encoder = train_utils().get_resnet('resnet18')
         # Define Second vision encoder
         if encoder == "resnet":
+           print("")
            vision_encoder2 = train_utils().get_resnet('resnet18')
         elif encoder == "Transformer":
             vision_encoder2 = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
@@ -334,7 +335,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=64,
+                batch_size=48,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
