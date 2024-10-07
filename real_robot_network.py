@@ -286,7 +286,7 @@ import timm
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
     def __init__(self, train=True, encoder = "resnet", action_def = "delta"):
-
+        Transformer_bool = None
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
@@ -296,9 +296,10 @@ class DiffusionPolicy_Real:
            print("")
            vision_encoder2 = train_utils().get_resnet('resnet18')
         elif encoder == "Transformer":
+            Transformer_bool = True
             print("Imported Transformer clip model")
             vision_encoder2 = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
-
+        
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
         # performance will tank if you forget to do this!
@@ -325,7 +326,8 @@ class DiffusionPolicy_Real:
                 dataset_path=dataset_path,
                 pred_horizon=pred_horizon,
                 obs_horizon=obs_horizon,
-                action_horizon=action_horizon
+                action_horizon=action_horizon,
+                Transformer= Transformer_bool
             )
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
@@ -336,7 +338,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=48,
+                batch_size=18,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer

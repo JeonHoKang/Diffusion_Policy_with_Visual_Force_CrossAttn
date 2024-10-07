@@ -214,7 +214,8 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         train_image_data_second_view = dataset_root['data']['images_B'][:]
         train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
         if Transformer:
-            cropped_train_image_data = center_crop(train_image_data_second_view, 224, 224)
+            print("center crop transformer")
+            train_image_data_second_view = center_crop(train_image_data_second_view, 224, 224)
 
         # (N,3,96,96)
         # (N, D)
