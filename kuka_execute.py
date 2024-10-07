@@ -21,35 +21,30 @@ class KukaMotionPlanning(Node):
         trajectory_msg.joint_names = self.joint_names
         point = JointTrajectoryPoint()
         point.positions = list(joint_trajectories.position)
-        if self.current_step < 1 :
-            point.time_from_start.sec = 1  # 3 seconds for the first point
-        elif self.current_step > 5000:
-            point.time_from_start.sec = 10
-        else:
-            point.time_from_start.sec = 0
-            point.time_from_start.nanosec = int(0.25 * 1e9)
+        point.time_from_start.sec = 0  # Set the seconds part to 0
+        point.time_from_start.nanosec = int(0.5 * 1e9)  # Set the nanoseconds part to 750,000,000
 
         trajectory_msg.points.append(point)
-        time.sleep(1)
         goal_msg.trajectory = trajectory_msg
         
         self._action_client.wait_for_server()
         self._send_goal_future = self._action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
-        self._send_goal_future.add_done_callback(self.goal_response_callback)
         rclpy.spin_until_future_complete(self, self._send_goal_future)
+        goal_handle = self._send_goal_future.result()
 
-    def goal_response_callback(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().info('Goal rejected :(')
-            return
-        self.get_logger().info('Goal accepted :)')
-        self._get_result_future = goal_handle.get_result_async()
-        self._get_result_future.add_done_callback(self.get_result_callback)
+        # if not goal_handle.accepted:
+        #     self.get_logger().info(f"Goal for point {i} was rejected")
+        #     return
+        
+        # self.get_logger().info(f"Goal for point {i} was accepted")
+        # Wait for the result to complete before moving to the next trajectory point
+        get_result_future = goal_handle.get_result_async()
+        rclpy.spin_until_future_complete(self, get_result_future)
+        result = get_result_future.result().result
 
     def feedback_callback(self, feedback_msg):
         feedback = feedback_msg.feedback
-        self.get_logger().info(f'Feedback: {feedback}')
+        # self.get_logger().info(f'Feedback: {feedback}')
 
     def get_result_callback(self, future):
         result = future.result().result

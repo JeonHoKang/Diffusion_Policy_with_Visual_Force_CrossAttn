@@ -230,9 +230,8 @@ class EndEffectorPoseNode(Node):
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps):
-
-        diffusion = DiffusionPolicy_Real(train=False)
+    def __init__(self, max_steps, encoder = "resnet", action_def = "absolute"):
+        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # ResNet18 has output dim of 512
@@ -305,7 +304,8 @@ class EvaluateRealRobot:
         self.camera_device = camera_devices
         self.align_A = align_A
         self.align_B = align_B
-
+        self.encoder = encoder
+        self.action_def = action_def
         self.pipeline_A.start(config_A)
         self.pipeline_B.start(config_B)
         time.sleep(4)
@@ -370,9 +370,12 @@ class EvaluateRealRobot:
 
         # Define the center point
         center_x, center_y = width_B // 2, height_B // 2
-
-        # Define the crop size
-        crop_width, crop_height = 320, 240
+        if self.encoder == "Transformer":
+            print("crop to 224 by 224")
+            crop_width, crop_height = 224, 224
+        else:
+            # Define the crop size
+            crop_width, crop_height = 320, 240
 
         # Calculate the top-left corner of the crop box
         x1 = max(center_x - crop_width // 2, 0)
@@ -391,11 +394,11 @@ class EvaluateRealRobot:
 
 
          ### Visualizing purposes
-        import matplotlib.pyplot as plt
-        plt.imshow(image_A_rgb)
-        plt.show()
-        plt.imshow(image_B_rgb)
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # plt.imshow(image_A_rgb)
+        # plt.show()
+        # plt.imshow(image_B_rgb)
+        # plt.show()
         print(f'current agent position, {agent_pos}')
         agent_position = agent_pos[:3]
         agent_rotation = agent_pos[3:]
@@ -457,8 +460,23 @@ class EvaluateRealRobot:
     #     # kuka_execution._send_goal_future.add_done_callback(kuka_execution.goal_response_callback)
     #     EE_Pose_Node.destroy_node()
     #     kuka_execution.destroy_node()
-
+    
     def execute_action(self, end_effector_pos, steps):
+        def quaternion_multiply(q1, q2):
+            x1, y1, z1, w1 = q1  # Note: [qx, qy, qz, qw]
+            x2, y2, z2, w2 = q2
+            
+            return np.array([
+                w1*x2 + x1*w2 + y1*z2 - z1*y2,
+                w1*y2 - x1*z2 + y1*w2 + z1*x2,
+                w1*z2 + x1*y2 - y1*x2 + z1*w2,
+                w1*w2 - x1*x2 - y1*y2 - z1*z2
+            ])
+        def compute_next_quaternion(q_current, q_delta):
+            # Changed order: delta * current instead of current * delta
+            q_next = quaternion_multiply(q_delta, q_current)
+            # Normalize the resulting quaternion
+            return q_next / np.linalg.norm(q_next)
         
         ### Stepping function to execute action with robot
         #TODO: Execute Motion
@@ -468,16 +486,32 @@ class EvaluateRealRobot:
         rot6d = end_effector_pos[3:]
         rot_m = rot6d_to_mat(np.array(rot6d))
         quaternion = quat_from_rot_m(rot_m)
-        print(f'action command {end_effector_pos}')
-        # Create Pose message for IK
-        target_pose = Pose()
-        target_pose.position.x = position[0]
-        target_pose.position.y = position[1]
-        target_pose.position.z = position[2]
-        target_pose.orientation.x = quaternion[0]
-        target_pose.orientation.y = quaternion[1]
-        target_pose.orientation.z = quaternion[2]
-        target_pose.orientation.w = quaternion[3]
+        if self.action_def == "delta":
+            current_pos = EE_Pose_Node.get_fk()
+            np.array(quaternion)
+            print(current_pos)
+            print(f'action command {end_effector_pos} delta')
+            next_rot = compute_next_quaternion(current_pos[3:], quaternion)
+            # Create Pose message for IK
+            target_pose = Pose()
+            target_pose.position.x = current_pos[0] + position[0]
+            target_pose.position.y = current_pos[1] +  position[1]
+            target_pose.position.z = current_pos[2] +  position[2]
+            target_pose.orientation.x = next_rot[0]
+            target_pose.orientation.y = next_rot[1]
+            target_pose.orientation.z = next_rot[2]
+            target_pose.orientation.w = next_rot[3]
+        else:
+            print(f'action command {end_effector_pos} absolute')
+            # Create Pose message for IK
+            target_pose = Pose()
+            target_pose.position.x = position[0]
+            target_pose.position.y = position[1]
+            target_pose.position.z = position[2]
+            target_pose.orientation.x = quaternion[0]
+            target_pose.orientation.y = quaternion[1]
+            target_pose.orientation.z = quaternion[2]
+            target_pose.orientation.w = quaternion[3]
 
         # Get IK solution
         joint_state = EE_Pose_Node.get_ik(target_pose)
@@ -516,11 +550,11 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_3000_clock_clean_res34.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2100_clock_clean_res18_delta.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
-            #       gdown.download(id=id, output=ckpt_path, quiet=False)
+            #       gdown.download(id=id, output=ckpt_path, quiet=False)    
 
             state_dict = torch.load(ckpt_path, map_location='cuda')
             #   noise_pred_net.load_state_dict(checkpoint['model_state_dict'])
@@ -547,7 +581,7 @@ class EvaluateRealRobot:
         steps = 0
 
 
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_res34.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_res18_delta.json', 'r') as f:
             stats = json.load(f)
             # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
             stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -567,7 +601,7 @@ class EvaluateRealRobot:
                 # print(agent_poses)
                 nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
 
-                # images are already normalized to [0,1]
+                # images are already normalized to [0,1]qqq
                 nimages = images_A
                 nimages_second_view = images_B
                 # device transfer
@@ -659,7 +693,7 @@ def main():
     try:  
         max_steps = 300
         # Evaluate Real Robot Environment
-        eval_real_robot = EvaluateRealRobot(max_steps)
+        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "resnet")
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape
