@@ -118,3 +118,8 @@ def quat_from_rot_m(mat):
     rotation = st.Rotation.from_matrix(mat)  # Create a Rotation object from the matrix
     quaternion = rotation.as_quat()  # Convert to quaternion (x, y, z, w)
     return quaternion
+
+def quat_to_rot_m(quat):
+    rotation = st.Rotation.from_quat(quat)  # Create a Rotation object from the quaternion
+    rot_matrix = rotation.as_matrix()  # Convert to rotation matrix
+    return rot_matrix

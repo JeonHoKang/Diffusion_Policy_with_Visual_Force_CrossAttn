@@ -295,6 +295,7 @@ class DiffusionPolicy_Real:
         if encoder == "resnet":
            vision_encoder2 = train_utils().get_resnet('resnet18')
         elif encoder == "Transformer":
+            print("Imported Transformer clip model")
             vision_encoder2 = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
 
         # IMPORTANT!
