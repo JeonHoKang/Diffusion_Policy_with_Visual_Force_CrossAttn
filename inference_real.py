@@ -27,7 +27,7 @@ from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
 from moveit_msgs.srv import GetPositionFK, GetPositionIK
 from moveit_msgs.msg import RobotState, MoveItErrorCodes, JointConstraint, Constraints
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, WrenchStamped
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from control_msgs.action import FollowJointTrajectory
 # from data_collection.submodules.wait_for_message import wait_for_message
@@ -105,7 +105,11 @@ class EndEffectorPoseNode(Node):
 
     def __init__(self, node_id: str) -> None:
         super().__init__(f"end_effector_pose_node_{node_id}")
+        self.force_torque_topic_ = "/lbr/force_torque_broadcaster/wrench"
 
+        # Subscribe to the force/torque sensor topic
+        self.force_torque_subscriber = self.create_subscription(WrenchStamped, self.force_torque_topic_, self.force_torque_callback, 10)
+        
         self.fk_client_ = self.create_client(GetPositionFK, self.fk_srv_name_)
         if not self.fk_client_.wait_for_service(timeout_sec=self.timeout_sec_):
             self.get_logger().error("FK service not available.")
@@ -114,6 +118,9 @@ class EndEffectorPoseNode(Node):
         if not self.ik_client_.wait_for_service(timeout_sec=self.timeout_sec_):
             self.get_logger().error("IK service not available.")
             exit(1)
+
+    def force_torque_callback(self, msg):
+        self.force_torque_data = msg.wrench
 
     def get_fk(self) -> Pose | None:
         current_joint_state_set, current_joint_state = wait_for_message(
@@ -230,8 +237,8 @@ class EndEffectorPoseNode(Node):
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps, encoder = "resnet", action_def = "absolute"):
-        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def)
+    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False):
+        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def, force_mod=force_mod)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # ResNet18 has output dim of 512
@@ -309,7 +316,7 @@ class EvaluateRealRobot:
         self.pipeline_A.start(config_A)
         self.pipeline_B.start(config_B)
         time.sleep(4)
-
+        self.force_mod = force_mod
         obs = self.get_observation()
          # keep a queue of last 2 steps of observations
         obs_deque = collections.deque(
@@ -345,7 +352,11 @@ class EvaluateRealRobot:
         agent_pos = EE_Pose_Node.get_fk()
         agent_pos = np.array(agent_pos)
         agent_pos.astype(np.float64)
-
+        force_torque_data = None
+        if self.force_mod:
+            force_torque_data = [EE_Pose_Node.force_torque_data.force.x, EE_Pose_Node.force_torque_data.force.y, EE_Pose_Node.force_torque_data.force.z]
+            force_torque_data = np.asanyarray(force_torque_data)
+            force_torque_data.astype(np.float32)
 
         if agent_pos is None:
             EE_Pose_Node.get_logger().error("Failed to get end effector pose")
@@ -405,11 +416,14 @@ class EvaluateRealRobot:
         rot_m_agent = quat_to_rot_m(agent_rotation)
         rot_6d = mat_to_rot6d(rot_m_agent)
         agent_pos_10d = np.hstack((agent_position, rot_6d))
+
         # Reshape to (C, H, W)
         image_A = np.transpose(image_A_rgb, (2, 0, 1))
         image_B = np.transpose(image_B_rgb, (2, 0, 1))
         obs['image_A'] = image_A
         obs['image_B'] = image_B
+        if self.force_mod:
+            obs['force'] = force_torque_data
         obs['agent_pos'] = agent_pos_10d
         EE_Pose_Node.destroy_node()
 
@@ -579,17 +593,28 @@ class EvaluateRealRobot:
         step_idx = self.step_idx
         done = False
         steps = 0
+        force_obs = None
 
 
         with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_res18_delta.json', 'r') as f:
             stats = json.load(f)
-            # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
-            stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
-            stats['agent_pos']['max'] = np.array(stats['agent_pos']['max'], dtype=np.float32)
+            if self.force_mod:
+                stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
+                stats['agent_pos']['max'] = np.array(stats['agent_pos']['max'], dtype=np.float32)
+                stats['force_mag']['min'] = np.array(stats['force_mag']['min'], dtype=np.float32)
+                stats['force_mag']['max'] = np.array(stats['force_mag']['max'], dtype=np.float32)
 
-            # Convert stats['action']['min'] and ['max'] to numpy arrays with float32 type
-            stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
-            stats['action']['max'] = np.array(stats['action']['max'], dtype=np.float32)
+                # Convert stats['action']['min'] and ['max'] to numpy arrays with float32 type
+                stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
+                stats['action']['max'] = np.array(stats['action']['max'], dtype=np.float32)
+            else:
+                # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
+                stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
+                stats['agent_pos']['max'] = np.array(stats['agent_pos']['max'], dtype=np.float32)
+
+                # Convert stats['action']['min'] and ['max'] to numpy arrays with float32 type
+                stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
+                stats['action']['max'] = np.array(stats['action']['max'], dtype=np.float32)
 
         with tqdm(total=max_steps, desc="Eval Real Robot") as pbar:
             while not done:
@@ -597,16 +622,24 @@ class EvaluateRealRobot:
                 # stack the last obs_horizon number of observations
                 images_A = np.stack([x['image_A'] for x in obs_deque])
                 images_B = np.stack([x['image_B'] for x in obs_deque])
+                if self.force_mod:
+                    force_obs = np.stack([x['force'] for x in obs_deque])
+
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
                 # print(agent_poses)
                 nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
-
+                if self.force_mod:
+                    nforce_mag, nforce_vec = data_utils.normalize_force_vector(force_obs)
+                    normalized_force_mag = data_utils.normalize_force_magnitude(nforce_mag, stats['force_mag'])
+                    normalized_force_data = np.hstack((normalized_force_mag, nforce_vec))
                 # images are already normalized to [0,1]qqq
                 nimages = images_A
                 nimages_second_view = images_B
                 # device transfer
                 nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
+                if self.force_mod:
+                    nforce_observation = torch.from_numpy(normalized_force_data).to(device, dtype=torch.float32)
                 processed_agent_poses = np.hstack((nagent_poses, agent_poses[:,3:]))
                 nagent_poses = torch.from_numpy(processed_agent_poses).to(device, dtype=torch.float32)
                 # infer action
@@ -693,7 +726,7 @@ def main():
     try:  
         max_steps = 300
         # Evaluate Real Robot Environment
-        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "resnet")
+        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "resnet", force_mod=True)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape
