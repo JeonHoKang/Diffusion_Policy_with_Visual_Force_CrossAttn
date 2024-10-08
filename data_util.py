@@ -221,19 +221,26 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                  obs_horizon: int,
                  action_horizon: int,
                  Transformer: bool = False,
-                 force_mod: bool = False):
+                 force_mod: bool = False,
+                 single_view: bool = False):
 
         # read from zarr dataset
         dataset_root = zarr.open(dataset_path, 'r')
-
-        # float32, [0,1], (N,96,96,3)
-        train_image_data = dataset_root['data']['images_A'][:]
-        train_image_data = np.moveaxis(train_image_data, -1,1)
-        train_image_data_second_view = dataset_root['data']['images_B'][:]
-        train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
-        if Transformer:
-            print("center crop transformer")
-            train_image_data_second_view = center_crop(train_image_data_second_view, 224, 224)
+        if single_view:
+            train_image_data = dataset_root['data']['images_B'][:]
+            train_image_data = np.moveaxis(train_image_data, -1,1)
+            if Transformer:
+                print("center crop transformer")
+                train_image_data = center_crop(train_image_data, 224, 224)
+        else:
+            # float32, [0,1], (N,96,96,3)
+            train_image_data = dataset_root['data']['images_A'][:]
+            train_image_data = np.moveaxis(train_image_data, -1,1)
+            train_image_data_second_view = dataset_root['data']['images_B'][:]
+            train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
+            if Transformer:
+                print("center crop transformer")
+                train_image_data_second_view = center_crop(train_image_data_second_view, 224, 224)
 
         # (N,3,96,96)
         # (N, D)
@@ -268,14 +275,15 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             magnitudes, normalized_force_direction = data_utils.normalize_force_vector(train_force_data)
             stats['force_mag'] = data_utils.get_data_stats(magnitudes)
             normalized_force_mag = data_utils.normalize_force_magnitude(magnitudes, stats['force_mag'])
-            normalized_force_data = np.hstack((normalized_force_mag, normalized_force_direction))  
+            normalized_force_data = np.hstack((normalized_force_mag, normalized_force_direction))
+        
+        # Start adding normalized training data
+        normalized_train_data['image'] = train_image_data
+
         # images are already normalized
         if force_mod:      
-            normalized_train_data['image'] = train_image_data
-            normalized_train_data['image2'] = train_image_data_second_view
             normalized_train_data['force'] = normalized_force_data
-        else:
-            normalized_train_data['image'] = train_image_data
+        if not single_view:
             normalized_train_data['image2'] = train_image_data_second_view   
 
         self.indices = indices
@@ -285,7 +293,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         self.action_horizon = action_horizon
         self.obs_horizon = obs_horizon
         self.force_mod = force_mod
-
+        self.single_view = single_view
     def __len__(self):
         return len(self.indices)
 
@@ -303,19 +311,22 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             sample_start_idx=sample_start_idx,
             sample_end_idx=sample_end_idx
         )
+        nsample['image'] = nsample['image'][:self.obs_horizon,:]
+        nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
+
         if self.force_mod:
             # discard unused observations
-            nsample['image'] = nsample['image'][:self.obs_horizon,:]
-            nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
             nsample['force'] = nsample['force'][:self.obs_horizon,:]
-            nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
-        else:
+        if not self.single_view:
             # discard unused observations
-            nsample['image'] = nsample['image'][:self.obs_horizon,:]
             nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
-            nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]            
 
         return nsample
+
+
+
+
+
 
 
 #@markdown ### **Dataset Demo**

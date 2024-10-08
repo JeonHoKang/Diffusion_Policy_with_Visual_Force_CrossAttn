@@ -10,13 +10,16 @@ import matplotlib.pyplot as plt
 
 torch.cuda.empty_cache()
 
-def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "resnet", action_def: str = "delta", force_mod: bool = True):
+def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "resnet", action_def: str = "delta", force_mod: bool = True, single_view: bool = False):
     print(f"Training model with vision: {encoder} with {action_def} action and Force: {force_mod}")
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
     modality = "without_force"
+    view = "dual_view"
     if force_mod:
         modality = "with_force"
-    diffusion = DiffusionPolicy_Real(encoder= encoder, action_def = action_def, force_mod = force_mod)
+    if single_view:
+        view = "single_view"
+    diffusion = DiffusionPolicy_Real(encoder= encoder, action_def = action_def, force_mod = force_mod, single_view= single_view)
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
 
@@ -68,17 +71,16 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
                 for nbatch in tepoch:
                     # data normalized in dataset
                     # device transfer
+                    nimage = nbatch['image'][:,:diffusion.obs_horizon].to(device)
+
+                    if not single_view:
+                        nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
                     if force_mod:
-                        nimage = nbatch['image'][:,:diffusion.obs_horizon].to(device)
-                        nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
                         nforce = nbatch['force'][:,:diffusion.obs_horizon].to(device)
-                        nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
-                        naction = nbatch['action'].to(device)
-                    else:
-                        nimage = nbatch['image'][:,:diffusion.obs_horizon].to(device)
-                        nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
-                        nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
-                        naction = nbatch['action'].to(device)                 
+
+                    nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
+                    naction = nbatch['action'].to(device)
+                    
                     ### Debug sequential data structure. It shoud be consecutive
                     # import matplotlib.pyplot as plt
                     # imdata1 = nimage[0].cpu()
@@ -108,19 +110,23 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
                     image_features = image_features.reshape(
                         *nimage.shape[:2],-1)
                     # (B,obs_horizon,D)
-
+                    if not single_view:
                     # encoder vision features
-                    image_features_second_view = diffusion.nets['vision_encoder2'](
-                        nimage_second_view.flatten(end_dim=1))
-                    image_features_second_view = image_features_second_view.reshape(
-                        *nimage_second_view.shape[:2],-1)
+                        image_features_second_view = diffusion.nets['vision_encoder2'](
+                            nimage_second_view.flatten(end_dim=1))
+                        image_features_second_view = image_features_second_view.reshape(
+                            *nimage_second_view.shape[:2],-1)
+                        
                     # (B,obs_horizon,D)
-                    if force_mod:
+                    if force_mod and single_view:
+                        obs_features = torch.cat([image_features, nforce, nagent_pos], dim=-1)
+                    elif force_mod and not single_view:
                         obs_features = torch.cat([image_features, image_features_second_view, nforce, nagent_pos], dim=-1)
+                    elif not force_mod and single_view:
+                        obs_features = torch.cat([image_features, nagent_pos], dim=-1)
                     else:
-                    # concatenate vision feature and low-dim obs
-                        obs_features = torch.cat([image_features, image_features_second_view, nagent_pos], dim=-1)
-
+                        obs_features = torch.cat([image_features, image_features_second_view , nagent_pos], dim=-1)
+                    
                     obs_cond = obs_features.flatten(start_dim=1)
                     # (B, obs_horizon * obs_dim)
 
@@ -169,13 +175,13 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}_{modality}.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}_{view}_{modality}.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.title('Training Loss over Epochs')
+    plt.title('Training Loss over Epocshs')
     plt.legend()
     plt.grid(True)
     plt.show()
@@ -187,4 +193,4 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True)
+    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True, single_view= False)

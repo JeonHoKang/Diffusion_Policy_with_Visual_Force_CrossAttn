@@ -285,11 +285,14 @@ dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98_
 import timm
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
-    def __init__(self, train=True, encoder = "resnet", action_def = "delta", force_mod:bool = False):
+    def __init__(self, train=True, encoder = "resnet", action_def = "delta", force_mod:bool = False, single_view:bool = False):
         Transformer_bool = None
         modality = "without_force"
+        view = "dual_view"
         if force_mod:
             modality = "with_force"
+        if single_view:
+            view = "single_view"
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
@@ -335,7 +338,8 @@ class DiffusionPolicy_Real:
                 obs_horizon=obs_horizon,
                 action_horizon=action_horizon,
                 Transformer= Transformer_bool,
-                force_mod = force_mod
+                force_mod = force_mod,
+                single_view=single_view
             )
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
@@ -390,17 +394,16 @@ class DiffusionPolicy_Real:
         ######### End ########
             # visualize data in batch
             batch = next(iter(dataloader))
+            print("batch['image'].shape:", batch['image'].shape)
+            if not single_view:
+                print("batch[image2].shape", batch["image2"].shape)
+
+            print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
+            
             if force_mod:
-                print("batch['image'].shape:", batch['image'].shape)
-                print("batch[image].shape", batch["image2"].shape)
-                print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
                 print("batch['force'].shape:", batch['force'].shape)
-                print("batch['action'].shape", batch['action'].shape)
-            else:
-                print("batch['image'].shape:", batch['image'].shape)
-                print("batch['image2'].shape:", batch['image2'].shape)
-                print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
-                print("batch['action'].shape", batch['action'].shape)
+
+            print("batch['action'].shape", batch['action'].shape)
             self.batch = batch
 
         # create network object
@@ -408,13 +411,19 @@ class DiffusionPolicy_Real:
             input_dim=action_dim,
             global_cond_dim=obs_dim*obs_horizon
         )
-
-        # the final arch has 2 parts
-        nets = nn.ModuleDict({
-            'vision_encoder': vision_encoder,
-            'vision_encoder2': vision_encoder2,
-            'noise_pred_net': noise_pred_net
-        })
+        if single_view:
+            # the final arch has 2 parts
+            nets = nn.ModuleDict({
+                'vision_encoder': vision_encoder,
+                'noise_pred_net': noise_pred_net
+            })
+        else:
+            # the final arch has 2 parts
+            nets = nn.ModuleDict({
+                'vision_encoder': vision_encoder,
+                'vision_encoder2': vision_encoder2,
+                'noise_pred_net': noise_pred_net
+            })
         # diffusion iteration
         num_diffusion_iters = 100
 
@@ -436,41 +445,18 @@ class DiffusionPolicy_Real:
         self.obs_horizon = obs_horizon
         self.obs_dim = obs_dim
         self.vision_encoder = vision_encoder
-        self.vision_encoder2 = vision_encoder2
+
+        if not single_view:
+            self.vision_encoder2 = vision_encoder2
+
         self.noise_pred_net = noise_pred_net
         self.action_horizon = action_horizon
         self.pred_horizon = pred_horizon
         self.lowdim_obs_dim = lowdim_obs_dim
         self.action_dim = action_dim
-# # demo
-# with torch.no_grad():
-#     # example inputs
-#     image = torch.zeros((1, obs_horizon,3,96,96))
-#     agent_pos = torch.zeros((1, obs_horizon, 2))
-#     # vision encoder
-#     image_features = nets['vision_encoder'](
-#         image.flatten(end_dim=1))
-#     # (2,512)
-#     image_features = image_features.reshape(*image.shape[:2],-1)
-#     # (1,2,512)
-#     obs = torch.cat([image_features, agent_pos],dim=-1)
-#     # (1,2,514)
 
-#     noised_action = torch.randn((1, pred_horizon, action_dim))
-#     diffusion_iter = torch.zeros((1,))
 
-#     # the noise prediction network
-#     # takes noisy action, diffusion iteration and observation as input
-#     # predicts the noise added to action
-#     noise = nets['noise_pred_net'](
-#         sample=noised_action,
-#         timestep=diffusion_iter,
-#         global_cond=obs.flatten(start_dim=1))
 
-#     # illustration of removing noise
-#     # the actual noise removal is performed by NoiseScheduler
-#     # and is dependent on the diffusion noise schedule
-#     denoised_action = noised_action - noise
 
 
 
