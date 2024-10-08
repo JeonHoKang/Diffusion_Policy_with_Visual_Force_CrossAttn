@@ -105,6 +105,23 @@ class data_utils:
         quaternion_array[negative_real_indices] *= -1
         
         return quaternion_array
+
+    def normalize_force_vector(force_vector):
+        
+        # Calculate the magnitude of each force vector along axis 1
+        magnitudes = np.linalg.norm(force_vector, axis=1, keepdims=True)
+        
+        # Avoid division by zero by using a small epsilon value
+        magnitudes[magnitudes == 0] = 1e-8
+        
+        # Normalize each force vector by dividing by its magnitude
+        normalized_forces = force_vector / magnitudes
+        return magnitudes, normalized_forces
+    
+    def normalize_force_magnitude(data, stats):
+        # nomalize to [0,1]
+        ndata = (data - stats['min']) / (stats['max'] - stats['min'])
+        return ndata
     
 def center_crop(images, crop_height, crop_width):
     # Get original dimensions
@@ -203,7 +220,8 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                  pred_horizon: int,
                  obs_horizon: int,
                  action_horizon: int,
-                 Transformer: bool = False):
+                 Transformer: bool = False,
+                 force_mod: bool = False):
 
         # read from zarr dataset
         dataset_root = zarr.open(dataset_path, 'r')
@@ -245,16 +263,28 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             # normalized_orientation = data_utils.process_quaternion(data[:,3:7])
             normalized_train_data[key] = np.hstack((normalized_position, normalized_orientation))
             ## TODO: Add code that will handle - and + sign for quaternion
-
+        if force_mod:
+            train_force_data = dataset_root['data']['state'][:,9:12]
+            magnitudes, normalized_force_direction = data_utils.normalize_force_vector(train_force_data)
+            stats['force_mag'] = data_utils.get_data_stats(magnitudes)
+            normalized_force_mag = data_utils.normalize_force_magnitude(magnitudes, stats['force_mag'])
+            normalized_force_data = np.hstack((normalized_force_mag, normalized_force_direction))  
         # images are already normalized
-        normalized_train_data['image'] = train_image_data
-        normalized_train_data['image2'] = train_image_data_second_view
+        if force_mod:      
+            normalized_train_data['image'] = train_image_data
+            normalized_train_data['image2'] = train_image_data_second_view
+            normalized_train_data['force'] = normalized_force_data
+        else:
+            normalized_train_data['image'] = train_image_data
+            normalized_train_data['image2'] = train_image_data_second_view   
+
         self.indices = indices
         self.stats = stats
         self.normalized_train_data = normalized_train_data
         self.pred_horizon = pred_horizon
         self.action_horizon = action_horizon
         self.obs_horizon = obs_horizon
+        self.force_mod = force_mod
 
     def __len__(self):
         return len(self.indices)
@@ -273,11 +303,17 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             sample_start_idx=sample_start_idx,
             sample_end_idx=sample_end_idx
         )
-
-        # discard unused observations
-        nsample['image'] = nsample['image'][:self.obs_horizon,:]
-        nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
-        nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
+        if self.force_mod:
+            # discard unused observations
+            nsample['image'] = nsample['image'][:self.obs_horizon,:]
+            nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
+            nsample['force'] = nsample['force'][:self.obs_horizon,:]
+            nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
+        else:
+            # discard unused observations
+            nsample['image'] = nsample['image'][:self.obs_horizon,:]
+            nsample['image2'] = nsample['image2'][:self.obs_horizon,:]
+            nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]            
 
         return nsample
 

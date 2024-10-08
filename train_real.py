@@ -10,9 +10,13 @@ import matplotlib.pyplot as plt
 
 torch.cuda.empty_cache()
 
-def train_Real_Robot(continue_training=False, start_epoch = 0, encoder = "resnet", action_def = "delta"):
+def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "resnet", action_def: str = "delta", force_mod: bool = True):
+    print(f"Training model with vision: {encoder} with {action_def} action and Force: {force_mod}")
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
-    diffusion = DiffusionPolicy_Real(encoder= encoder, action_def = action_def)
+    modality = "without_force"
+    if force_mod:
+        modality = "with_force"
+    diffusion = DiffusionPolicy_Real(encoder= encoder, action_def = action_def, force_mod = force_mod)
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
 
@@ -64,9 +68,17 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder = "resnet
                 for nbatch in tepoch:
                     # data normalized in dataset
                     # device transfer
-                    nimage = nbatch['image'][:,:diffusion.obs_horizon].to(device)
-                    nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
-
+                    if force_mod:
+                        nimage = nbatch['image'][:,:diffusion.obs_horizon].to(device)
+                        nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
+                        nforce = nbatch['force'][:,:diffusion.obs_horizon].to(device)
+                        nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
+                        naction = nbatch['action'].to(device)
+                    else:
+                        nimage = nbatch['image'][:,:diffusion.obs_horizon].to(device)
+                        nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
+                        nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
+                        naction = nbatch['action'].to(device)                 
                     ### Debug sequential data structure. It shoud be consecutive
                     # import matplotlib.pyplot as plt
                     # imdata1 = nimage[0].cpu()
@@ -87,8 +99,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder = "resnet
                     # plt.show()  
 
 
-                    nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
-                    naction = nbatch['action'].to(device)
+
                     B = nagent_pos.shape[0]
 
                     # encoder vision features
@@ -104,9 +115,12 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder = "resnet
                     image_features_second_view = image_features_second_view.reshape(
                         *nimage_second_view.shape[:2],-1)
                     # (B,obs_horizon,D)
-
+                    if force_mod:
+                        obs_features = torch.cat([image_features, image_features_second_view, nforce, nagent_pos], dim=-1)
+                    else:
                     # concatenate vision feature and low-dim obs
-                    obs_features = torch.cat([image_features, image_features_second_view, nagent_pos], dim=-1)
+                        obs_features = torch.cat([image_features, image_features_second_view, nagent_pos], dim=-1)
+
                     obs_cond = obs_features.flatten(start_dim=1)
                     # (B, obs_horizon * obs_dim)
 
@@ -155,7 +169,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder = "resnet
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}_{modality}.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
@@ -173,4 +187,4 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder = "resnet
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=False, encoder = "Transformer", action_def="delta")
+    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True)
