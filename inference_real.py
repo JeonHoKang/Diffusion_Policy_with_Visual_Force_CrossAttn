@@ -683,11 +683,11 @@ class EvaluateRealRobot:
 
                     # concat with low-dim observations
                     if force_mod and single_view:
-                        obs_features = torch.cat([image_features, nforce_observation, nagent_poses], dim=-1)
+                        obs_features = torch.cat([image_features_second_view, nforce_observation, nagent_poses], dim=-1)
                     elif force_mod and not single_view:
                         obs_features = torch.cat([image_features, image_features_second_view, nforce_observation, nagent_poses], dim=-1)
                     elif not force_mod and single_view:
-                        obs_features = torch.cat([image_features, nforce_observation], dim=-1)
+                        obs_features = torch.cat([image_features_second_view, nforce_observation], dim=-1)
                     else:
                         obs_features = torch.cat([image_features, image_features_second_view , nagent_poses], dim=-1)
 
