@@ -662,12 +662,10 @@ class EvaluateRealRobot:
                 # images are already normalized to [0,1]qqq
                 if not self.single_view:
                     nimages = images_A
+                    nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
 
                 nimages_second_view = images_B
                 # device transfer
-                if not self.single_view:
-                    nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
-
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
                 if force_mod:
                     nforce_observation = torch.from_numpy(normalized_force_data).to(device, dtype=torch.float32)
