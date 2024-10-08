@@ -296,7 +296,6 @@ class DiffusionPolicy_Real:
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
-        vision_encoder = train_utils().get_resnet('resnet18')
         # Define Second vision encoder
         if encoder == "resnet":
            print("")
@@ -305,14 +304,20 @@ class DiffusionPolicy_Real:
             Transformer_bool = True
             print("Imported Transformer clip model")
             vision_encoder2 = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
-        
+        if not single_view:
+            vision_encoder = train_utils().get_resnet('resnet18')
+            vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
+
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
         # performance will tank if you forget to do this!
-        vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
         vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         # ResNet18 has output dim of 512 X 2 because two views
-        vision_feature_dim = 512+ 512
+        if single_view:
+            vision_feature_dim = 512
+        else:
+            vision_feature_dim = 512+ 512
+
         force_feature_dim = 4
         # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
         lowdim_obs_dim = 9
@@ -414,7 +419,7 @@ class DiffusionPolicy_Real:
         if single_view:
             # the final arch has 2 parts
             nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder,
+                'vision_encoder': vision_encoder2,
                 'noise_pred_net': noise_pred_net
             })
         else:
@@ -444,10 +449,10 @@ class DiffusionPolicy_Real:
         self.num_diffusion_iters = num_diffusion_iters
         self.obs_horizon = obs_horizon
         self.obs_dim = obs_dim
-        self.vision_encoder = vision_encoder
-
         if not single_view:
-            self.vision_encoder2 = vision_encoder2
+            self.vision_encoder = vision_encoder
+
+        self.vision_encoder2 = vision_encoder2
 
         self.noise_pred_net = noise_pred_net
         self.action_horizon = action_horizon

@@ -237,12 +237,15 @@ class EndEffectorPoseNode(Node):
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False):
-        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def, force_mod=force_mod)
+    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False):
+        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def, force_mod=force_mod, single_view= single_view)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # ResNet18 has output dim of 512
-        vision_feature_dim = 1024
+        if single_view:
+            vision_feature_dim = 512
+        else:
+            vision_feature_dim = 512 + 512
         # agent_pos is 2 dimensional
         # lowdim_obs_dim = 2
         # # observation feature has 514 dims in total per step
@@ -274,26 +277,28 @@ class EvaluateRealRobot:
         camera_devices = camera_context.query_devices()
         self.diffusion = diffusion
         self.vision_feature_dim = vision_feature_dim
-        if len(camera_devices) < 2:
-            raise RuntimeError("Two cameras are required, but fewer were detected.")
-
+        if not single_view:
+            if len(camera_devices) < 2:
+                raise RuntimeError("Two cameras are required, but fewer were detected.")
+        else:
+            if len(camera_devices) < 1:
+                raise RuntimeError("One camera required, but fewer were detected.")
+        # Initialize Camera A
         serial_A = camera_devices[1].get_info(rs.camera_info.serial_number)
-        serial_B = camera_devices[0].get_info(rs.camera_info.serial_number)
-
         # Configure Camera A
         config_A = rs.config()
         config_A.enable_device(serial_A)
         config_A.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        align_A = rs.align(rs.stream.color)
 
+        # Initialize Camera B
+        serial_B = camera_devices[0].get_info(rs.camera_info.serial_number)
         # Configure Camera B
         config_B = rs.config()
         config_B.enable_device(serial_B)
         config_B.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
         # Start pipelines
-
-
-        align_A = rs.align(rs.stream.color)
         align_B = rs.align(rs.stream.color)
 
 
@@ -306,15 +311,21 @@ class EvaluateRealRobot:
         self.max_steps = max_steps
         self.ema_nets = ema_nets
         self.step_idx = step_idx
-        self.pipeline_A = pipeline_A
-        self.pipeline_B = pipeline_B
-        self.camera_device = camera_devices
-        self.align_A = align_A
-        self.align_B = align_B
+
+        if single_view:
+            self.pipeline_B = pipeline_B
+            self.camera_device = camera_devices
+            self.align_B = align_B
+        else:
+            self.pipeline_B = pipeline_B
+            self.camera_device = camera_devices
+            self.align_B = align_B
+            self.pipeline_A = pipeline_A
+            self.align_A = align_A
+            self.pipeline_A.start(config_A)
+
         self.encoder = encoder
         self.action_def = action_def
-        self.pipeline_A.start(config_A)
-        self.pipeline_B.start(config_B)
         time.sleep(4)
         self.force_mod = force_mod
         obs = self.get_observation()
@@ -323,17 +334,22 @@ class EvaluateRealRobot:
             [obs] * diffusion.obs_horizon, maxlen=diffusion.obs_horizon)
 
         self.obs_deque = obs_deque
+        self.single_view = single_view
 
     def get_observation(self):
         ### Get initial observation for the
         EE_Pose_Node = EndEffectorPoseNode("obs")
         obs = {}
+        single_view = self.single_view
         #TODO: Image data from two realsense camera
-        pipeline_A = self.pipeline_A
-        pipeline_B = self.pipeline_B
-        align_A = self.align_A
-        align_B = self.align_B
-
+        if single_view:
+            pipeline_B = self.pipeline_B
+            align_B = self.align_B
+        else:
+            pipeline_A = self.pipeline_A
+            align_A = self.align_A
+            pipeline_B = self.pipeline_B
+            align_B = self.align_B
 
         # Camera intrinsics (dummy values, replace with your actual intrinsics)
         camera_intrinsics = {
@@ -361,20 +377,27 @@ class EvaluateRealRobot:
         if agent_pos is None:
             EE_Pose_Node.get_logger().error("Failed to get end effector pose")
         #####
-        frames_A = pipeline_A.wait_for_frames()
-        aligned_frames_A = align_A.process(frames_A)
+        if single_view:
+            frames_B = pipeline_B.wait_for_frames()
+            aligned_frames_B = align_B.process(frames_B)
+            color_frame_B = aligned_frames_B.get_color_frame()
+            color_image_B = np.asanyarray(color_frame_B.get_data())
+            color_image_B.astype(np.float32)
+        else:    
+            frames_A = pipeline_A.wait_for_frames()
+            aligned_frames_A = align_A.process(frames_A)
+            color_frame_A = aligned_frames_A.get_color_frame()
+            color_image_A = np.asanyarray(color_frame_A.get_data())
+            color_image_A.astype(np.float32)
 
-        color_frame_A = aligned_frames_A.get_color_frame()
-
-        frames_B = pipeline_B.wait_for_frames()
-        aligned_frames_B = align_B.process(frames_B)
-        color_frame_B = aligned_frames_B.get_color_frame()
-        color_image_A = np.asanyarray(color_frame_A.get_data())
-        color_image_A.astype(np.float32)
-        color_image_B = np.asanyarray(color_frame_B.get_data())
-        color_image_B.astype(np.float32)
+            frames_B = pipeline_B.wait_for_frames()
+            aligned_frames_B = align_B.process(frames_B)
+            color_frame_B = aligned_frames_B.get_color_frame()
+            color_image_B = np.asanyarray(color_frame_B.get_data())
+            color_image_B.astype(np.float32)
         
-        image_A = cv2.resize(color_image_A, (320, 240), interpolation=cv2.INTER_AREA)
+            image_A = cv2.resize(color_image_A, (320, 240), interpolation=cv2.INTER_AREA)
+            image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
 
         # Get the image dimensions
         height_B, width_B, _ = color_image_B.shape
@@ -399,7 +422,6 @@ class EvaluateRealRobot:
 
  
         # Convert BGR to RGB for Matplotlib visualization
-        image_A_rgb = cv2.cvtColor(image_A, cv2.COLOR_BGR2RGB)
         image_B_rgb = cv2.cvtColor(cropped_image_B, cv2.COLOR_BGR2RGB)
         
 
@@ -418,9 +440,10 @@ class EvaluateRealRobot:
         agent_pos_10d = np.hstack((agent_position, rot_6d))
 
         # Reshape to (C, H, W)
-        image_A = np.transpose(image_A_rgb, (2, 0, 1))
         image_B = np.transpose(image_B_rgb, (2, 0, 1))
-        obs['image_A'] = image_A
+        if not single_view:
+            image_A = np.transpose(image_A_rgb, (2, 0, 1))
+            obs['image_A'] = image_A
         obs['image_B'] = image_B
         if self.force_mod:
             obs['force'] = force_torque_data
@@ -594,11 +617,12 @@ class EvaluateRealRobot:
         done = False
         steps = 0
         force_obs = None
-
+        single_view = self.single_view
+        force_mod = self.force_mod
 
         with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_res18_delta.json', 'r') as f:
             stats = json.load(f)
-            if self.force_mod:
+            if force_mod:
                 stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
                 stats['agent_pos']['max'] = np.array(stats['agent_pos']['max'], dtype=np.float32)
                 stats['force_mag']['min'] = np.array(stats['force_mag']['min'], dtype=np.float32)
@@ -620,37 +644,52 @@ class EvaluateRealRobot:
             while not done:
                 B = 1
                 # stack the last obs_horizon number of observations
-                images_A = np.stack([x['image_A'] for x in obs_deque])
+                if not self.single_view:
+                    images_A = np.stack([x['image_A'] for x in obs_deque])
+
                 images_B = np.stack([x['image_B'] for x in obs_deque])
-                if self.force_mod:
+
+                if force_mod:
                     force_obs = np.stack([x['force'] for x in obs_deque])
 
                 agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
                 # print(agent_poses)
                 nagent_poses = data_utils.normalize_data(agent_poses[:,:3], stats=stats['agent_pos'])
-                if self.force_mod:
+                if force_mod:
                     nforce_mag, nforce_vec = data_utils.normalize_force_vector(force_obs)
                     normalized_force_mag = data_utils.normalize_force_magnitude(nforce_mag, stats['force_mag'])
                     normalized_force_data = np.hstack((normalized_force_mag, nforce_vec))
                 # images are already normalized to [0,1]qqq
-                nimages = images_A
+                if not self.single_view:
+                    nimages = images_A
+
                 nimages_second_view = images_B
                 # device transfer
-                nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
+                if not self.single_view:
+                    nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
+
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
-                if self.force_mod:
+                if force_mod:
                     nforce_observation = torch.from_numpy(normalized_force_data).to(device, dtype=torch.float32)
                 processed_agent_poses = np.hstack((nagent_poses, agent_poses[:,3:]))
                 nagent_poses = torch.from_numpy(processed_agent_poses).to(device, dtype=torch.float32)
                 # infer action
                 with torch.no_grad():
                     # get image features
-                    image_features = ema_nets['vision_encoder'](nimages)
+                    if not self.single_view:
+                        image_features = ema_nets['vision_encoder'](nimages)
                     # (2,512)
                     image_features_second_view = ema_nets['vision_encoder2'](nimages_second_view)
 
                     # concat with low-dim observations
-                    obs_features = torch.cat([image_features, image_features_second_view, nagent_poses], dim=-1)
+                    if force_mod and single_view:
+                        obs_features = torch.cat([image_features, nforce_observation, nagent_poses], dim=-1)
+                    elif force_mod and not single_view:
+                        obs_features = torch.cat([image_features, image_features_second_view, nforce_observation, nagent_poses], dim=-1)
+                    elif not force_mod and single_view:
+                        obs_features = torch.cat([image_features, nforce_observation], dim=-1)
+                    else:
+                        obs_features = torch.cat([image_features, image_features_second_view , nagent_poses], dim=-1)
 
                     # reshape observation to (B,obs_horizon*obs_dim)
                     obs_cond = obs_features.unsqueeze(0).flatten(start_dim=1)
@@ -726,7 +765,7 @@ def main():
     try:  
         max_steps = 300
         # Evaluate Real Robot Environment
-        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "resnet", force_mod=True)
+        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "resnet", force_mod=True, single_view= False)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape
