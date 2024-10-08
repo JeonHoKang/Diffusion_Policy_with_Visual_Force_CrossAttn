@@ -285,8 +285,11 @@ dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98_
 import timm
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
-    def __init__(self, train=True, encoder = "resnet", action_def = "delta"):
+    def __init__(self, train=True, encoder = "resnet", action_def = "delta", force_mod:bool = False):
         Transformer_bool = None
+        modality = "without_force"
+        if force_mod:
+            modality = "with_force"
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
@@ -307,10 +310,14 @@ class DiffusionPolicy_Real:
         vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         # ResNet18 has output dim of 512 X 2 because two views
         vision_feature_dim = 512+ 512
+        force_feature_dim = 4
         # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
         lowdim_obs_dim = 9
         # observation feature has 514 dims in total per step
-        obs_dim = vision_feature_dim + lowdim_obs_dim
+        if force_mod:
+            obs_dim = vision_feature_dim + lowdim_obs_dim + force_feature_dim
+        else:            
+            obs_dim = vision_feature_dim + lowdim_obs_dim
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
         # parameters
@@ -327,12 +334,14 @@ class DiffusionPolicy_Real:
                 pred_horizon=pred_horizon,
                 obs_horizon=obs_horizon,
                 action_horizon=action_horizon,
-                Transformer= Transformer_bool
+                Transformer= Transformer_bool,
+                force_mod = force_mod
             )
             # save training data statistics (min, max) for each dim
             stats = dataset.stats
+
            # Save the stats to a file
-            with open(f'stats_clock_clean_res18_{action_def}.json', 'w') as f:
+            with open(f'stats_clock_clean_{encoder}_{action_def}_{modality}.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
             # create dataloader
@@ -379,14 +388,19 @@ class DiffusionPolicy_Real:
         # else:
         #     print("The images are different.")
         ######### End ########
-
-        
             # visualize data in batch
             batch = next(iter(dataloader))
-            print("batch['image'].shape:", batch['image'].shape)
-            print("batch['image2'].shape:", batch['image2'].shape)
-            print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
-            print("batch['action'].shape", batch['action'].shape)
+            if force_mod:
+                print("batch['image'].shape:", batch['image'].shape)
+                print("batch[image].shape", batch["image2"].shape)
+                print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
+                print("batch['force'].shape:", batch['force'].shape)
+                print("batch['action'].shape", batch['action'].shape)
+            else:
+                print("batch['image'].shape:", batch['image'].shape)
+                print("batch['image2'].shape:", batch['image2'].shape)
+                print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
+                print("batch['action'].shape", batch['action'].shape)
             self.batch = batch
 
         # create network object
