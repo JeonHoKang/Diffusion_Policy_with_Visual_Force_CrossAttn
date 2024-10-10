@@ -47,7 +47,6 @@ class ForceEncoder(nn.Module):
             nn.Flatten()
         )
 
-
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
@@ -61,6 +60,8 @@ class ForceEncoder(nn.Module):
 class CrossAttentionFusion(nn.Module):
     def __init__(self, image_dim, force_dim, hidden_dim:int = 512, batch_size = 48, obs_horizon = 2, resnet = True):
         super(CrossAttentionFusion, self).__init__()
+        self.obs_horizon = obs_horizon
+        self.batch_size = batch_size
         C,H,W = image_dim
         # Image feature extraction
         # Image feature extraction layers
@@ -101,12 +102,12 @@ class CrossAttentionFusion(nn.Module):
             nn.Linear(hidden_dim, hidden_dim)
         )
 
-    def forward(self, image_input, force_input, batch_size, obs_horizon):
+    def forward(self, image_input, force_input):
         # Encode image and force data
         image_features = self.image_encoder(image_input)
 
         image_features = self.image_fc(image_features)
-        image_features = image_features.view(batch_size, obs_horizon, -1)
+        image_features = image_features.view(self.batch_size, self.obs_horizon, -1)
 
         image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
 
@@ -393,7 +394,7 @@ class DiffusionPolicy_Real:
                 action_def = "delta", 
                 force_mod:bool = False, 
                 single_view:bool = False, 
-                force_encode = True,
+                force_encode = False,
                 cross_attn: bool = False):
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
@@ -418,20 +419,23 @@ class DiffusionPolicy_Real:
         # Define Second vision encoder
         if encoder == "resnet":
            print("")
-           vision_encoder2 = train_utils().get_resnet('resnet18')
+           vision_encoder = train_utils().get_resnet('resnet18')
         elif encoder == "Transformer":
             Transformer_bool = True
             print("Imported Transformer clip model")
-            vision_encoder2 = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
+            vision_encoder = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
         if not single_view:
-            vision_encoder = train_utils().get_resnet('resnet18')
-            vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
+            vision_encoder2 = train_utils().get_resnet('resnet18')
+            vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         if force_encode:
             force_encoder = ForceEncoder(4, 512, batch_size = batch_size, obs_horizon = obs_horizon, cross_attn=cross_attn)
+
+        if cross_attn:
+            joint_encoder = CrossAttentionFusion((3, 320, 240), 4, 512, batch_size = batch_size, obs_horizon=obs_horizon, resnet= True)
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
         # performance will tank if you forget to do this!
-        vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
+        vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
         # ResNet18 has output dim of 512 X 2 because two views
         if single_view:
             vision_feature_dim = 512
@@ -444,8 +448,10 @@ class DiffusionPolicy_Real:
         # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
         lowdim_obs_dim = 9
         # observation feature has 514 dims in total per step
-        if force_mod:
+        if force_mod and not cross_attn:
             obs_dim = vision_feature_dim + force_feature_dim  + lowdim_obs_dim
+        elif force_mod and cross_attn:
+            obs_dim = vision_feature_dim  + lowdim_obs_dim
         else:            
             obs_dim = vision_feature_dim + lowdim_obs_dim
 
@@ -530,16 +536,22 @@ class DiffusionPolicy_Real:
             input_dim=action_dim,
             global_cond_dim=obs_dim*obs_horizon
         )
-        if single_view:
+        if single_view and not force_mod and not force_encode and not cross_attn:
             # the final arch has 2 parts
             nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder2,
+                'vision_encoder': vision_encoder,
+                'noise_pred_net': noise_pred_net
+            })
+        elif single_view and force_mod and not force_encode and not cross_attn:
+            # the final arch has 2 parts
+            nets = nn.ModuleDict({
+                'vision_encoder': vision_encoder,
                 'noise_pred_net': noise_pred_net
             })
         elif single_view and force_encode:
             # the final arch has 2 parts
             nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder2,
+                'vision_encoder': vision_encoder,
                 'force_encoder': force_encoder,
                 'noise_pred_net': noise_pred_net
             })   
@@ -550,13 +562,27 @@ class DiffusionPolicy_Real:
                 'force_encoder': force_encoder,
                 'noise_pred_net': noise_pred_net
             })
-        elif not single_view and not force_encode:
+        elif not single_view and not force_encode and not cross_attn:
             nets = nn.ModuleDict({
                 'vision_encoder': vision_encoder,
                 'vision_encoder2': vision_encoder2,
                 'noise_pred_net': noise_pred_net
             })
+        elif single_view and cross_attn:
+            nets = nn.ModuleDict({
+                'cross_attn_encoder': joint_encoder,
+                'noise_pred_net': noise_pred_net
+            })
+        elif not single_view and cross_attn and not force_encode:
+            nets = nn.ModuleDict({
+                'cross_attn_encoder': joint_encoder,
+                'vision_encoder2': vision_encoder2,
+                'noise_pred_net': noise_pred_net
+            }) 
+        elif cross_attn and force_encode:
+            print("Cross attn and force encode cannot be True at the same time")
 
+            
         # diffusion iteration
         num_diffusion_iters = 100
 
@@ -578,9 +604,9 @@ class DiffusionPolicy_Real:
         self.obs_horizon = obs_horizon
         self.obs_dim = obs_dim
         if not single_view:
-            self.vision_encoder = vision_encoder
+            self.vision_encoder2 = vision_encoder2
 
-        self.vision_encoder2 = vision_encoder2
+        self.vision_encoder = vision_encoder
         if force_encode:
             self.force_encoder = force_encoder
         self.noise_pred_net = noise_pred_net
@@ -594,138 +620,138 @@ class DiffusionPolicy_Real:
 
 
 
-class DiffusionPolicy_Real_SingleView:     
-    def __init__(self, train=True):
+# class DiffusionPolicy_Real_SingleView:     
+#     def __init__(self, train=True):
 
-        # construct ResNet18 encoder
-        # if you have multiple camera views, use seperate encoder weights for each view.
-        # Resnet18 and resnet34 both have same dimension for the output
-        vision_encoder = train_utils().get_resnet('resnet18')
-        # Define Second vision encoder
-        # IMPORTANT!
-        # replace all BatchNorm with GroupNorm to work with EMA
-        # performance will tank if you forget to do this!
-        vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
-        # ResNet18 has output dim of 512 X 2 because two views
-        vision_feature_dim = 512
-        # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
-        lowdim_obs_dim = 7
-        # observation feature has 514 dims in total per step
-        obs_dim = vision_feature_dim + lowdim_obs_dim
-        # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
-        action_dim = 7
-        # parameters
-        pred_horizon = 16
-        obs_horizon = 2
-        action_horizon = 8
-        #|o|o|                             observations: 2
-        #| |a|a|a|a|a|a|a|a|               actions executed: 8
-        #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        if train:
-            # create dataset from file
-            dataset = RealRobotDataSet_SingleView(
-                dataset_path=dataset_path,
-                pred_horizon=pred_horizon,
-                obs_horizon=obs_horizon,
-                action_horizon=action_horizon
-            )
-            # save training data statistics (min, max) for each dim
-            stats = dataset.stats
-           # Save the stats to a file
-            with open('stats_clock_clean_resnet.json', 'w') as f:
-                json.dump(stats, f, cls=NumpyEncoder)
-                print("stats saved")
-            # create dataloader
-            dataloader = torch.utils.data.DataLoader(
-                dataset,
-                batch_size=64,
-                num_workers=4,
-                shuffle=True,
-                # accelerate cpu-gpu transfer
-                pin_memory=True,
-                # don't kill worker process afte each epoch
-                persistent_workers=True
-            )
+#         # construct ResNet18 encoder
+#         # if you have multiple camera views, use seperate encoder weights for each view.
+#         # Resnet18 and resnet34 both have same dimension for the output
+#         vision_encoder = train_utils().get_resnet('resnet18')
+#         # Define Second vision encoder
+#         # IMPORTANT!
+#         # replace all BatchNorm with GroupNorm to work with EMA
+#         # performance will tank if you forget to do this!
+#         vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
+#         # ResNet18 has output dim of 512 X 2 because two views
+#         vision_feature_dim = 512
+#         # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
+#         lowdim_obs_dim = 7
+#         # observation feature has 514 dims in total per step
+#         obs_dim = vision_feature_dim + lowdim_obs_dim
+#         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
+#         action_dim = 7
+#         # parameters
+#         pred_horizon = 16
+#         obs_horizon = 2
+#         action_horizon = 8
+#         #|o|o|                             observations: 2
+#         #| |a|a|a|a|a|a|a|a|               actions executed: 8
+#         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
+#         if train:
+#             # create dataset from file
+#             dataset = RealRobotDataSet_SingleView(
+#                 dataset_path=dataset_path,
+#                 pred_horizon=pred_horizon,
+#                 obs_horizon=obs_horizon,
+#                 action_horizon=action_horizon
+#             )
+#             # save training data statistics (min, max) for each dim
+#             stats = dataset.stats
+#            # Save the stats to a file
+#             with open('stats_clock_clean_resnet.json', 'w') as f:
+#                 json.dump(stats, f, cls=NumpyEncoder)
+#                 print("stats saved")
+#             # create dataloader
+#             dataloader = torch.utils.data.DataLoader(
+#                 dataset,
+#                 batch_size=64,
+#                 num_workers=4,
+#                 shuffle=True,
+#                 # accelerate cpu-gpu transfer
+#                 pin_memory=True,
+#                 # don't kill worker process afte each epoch
+#                 persistent_workers=True
+#             )
 
-            self.dataloader = dataloader
-            self.stats = stats
+#             self.dataloader = dataloader
+#             self.stats = stats
 
-        #### For debugging purposes uncomment
-        # import matplotlib.pyplot as plt
-        # imdata = dataset[100]['image']
-        # if imdata.dtype == np.float32 or imdata.dtype == np.float64:
-        #     imdata = imdata / 255.0
-        # img1 = imdata[0]
-        # img2 = imdata[1]
-        # # Loop through the two different "channels"
-        # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-        # for i in range(2):
-        #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-        #     img = np.transpose(imdata[i], (1, 2, 0))
+#         #### For debugging purposes uncomment
+#         # import matplotlib.pyplot as plt
+#         # imdata = dataset[100]['image']
+#         # if imdata.dtype == np.float32 or imdata.dtype == np.float64:
+#         #     imdata = imdata / 255.0
+#         # img1 = imdata[0]
+#         # img2 = imdata[1]
+#         # # Loop through the two different "channels"
+#         # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+#         # for i in range(2):
+#         #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+#         #     img = np.transpose(imdata[i], (1, 2, 0))
             
-        #     # Display the image in the i-th subplot
-        #     axes[i].imshow(img)
-        #     axes[i].set_title(f'Channel {i + 1}')
-        #     axes[i].axis('off')
+#         #     # Display the image in the i-th subplot
+#         #     axes[i].imshow(img)
+#         #     axes[i].set_title(f'Channel {i + 1}')
+#         #     axes[i].axis('off')
 
-        # # Show the plot
-        # plt.show()  
+#         # # Show the plot
+#         # plt.show()  
 
-        # # Check if both images are exactly the same
-        # are_equal = np.array_equal(img1, img2)
+#         # # Check if both images are exactly the same
+#         # are_equal = np.array_equal(img1, img2)
 
-        # if are_equal:
-        #     print("The images are the same.")
-        # else:
-        #     print("The images are different.")
-        ######### End ########
-
-        
-            # visualize data in batch
-            batch = next(iter(dataloader))
-            print("batch['image'].shape:", batch['image'].shape)
-            print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
-            print("batch['action'].shape", batch['action'].shape)
-            self.batch = batch
-
-        # create network object
-        noise_pred_net = ConditionalUnet1D(
-            input_dim=action_dim,
-            global_cond_dim=obs_dim*obs_horizon
-        )
-
-        # the final arch has 2 parts
-        nets = nn.ModuleDict({
-            'vision_encoder': vision_encoder,
-            'noise_pred_net': noise_pred_net
-        })
-        # diffusion iteration
-        num_diffusion_iters = 100
-
-        noise_scheduler = DDPMScheduler(
-            num_train_timesteps=num_diffusion_iters,
-            # the choise of beta schedule has big impact on performance
-            # we found squared cosine works the best
-            beta_schedule='squaredcos_cap_v2',
-            # clip output to [-1,1] to improve stability
-            clip_sample=True,
-            # our network predicts noise (instead of denoised action)
-            prediction_type='epsilon'
-        )
+#         # if are_equal:
+#         #     print("The images are the same.")
+#         # else:
+#         #     print("The images are different.")
+#         ######### End ########
 
         
-        self.nets = nets
-        self.noise_scheduler = noise_scheduler
-        self.num_diffusion_iters = num_diffusion_iters
-        self.obs_horizon = obs_horizon
-        self.obs_dim = obs_dim
-        self.vision_encoder = vision_encoder
-        self.noise_pred_net = noise_pred_net
-        self.action_horizon = action_horizon
-        self.pred_horizon = pred_horizon
-        self.lowdim_obs_dim = lowdim_obs_dim
-        self.action_dim = action_dim
-# # demo
+#             # visualize data in batch
+#             batch = next(iter(dataloader))
+#             print("batch['image'].shape:", batch['image'].shape)
+#             print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
+#             print("batch['action'].shape", batch['action'].shape)
+#             self.batch = batch
+
+#         # create network object
+#         noise_pred_net = ConditionalUnet1D(
+#             input_dim=action_dim,
+#             global_cond_dim=obs_dim*obs_horizon
+#         )
+
+#         # the final arch has 2 parts
+#         nets = nn.ModuleDict({
+#             'vision_encoder': vision_encoder,
+#             'noise_pred_net': noise_pred_net
+#         })
+#         # diffusion iteration
+#         num_diffusion_iters = 100
+
+#         noise_scheduler = DDPMScheduler(
+#             num_train_timesteps=num_diffusion_iters,
+#             # the choise of beta schedule has big impact on performance
+#             # we found squared cosine works the best
+#             beta_schedule='squaredcos_cap_v2',
+#             # clip output to [-1,1] to improve stability
+#             clip_sample=True,
+#             # our network predicts noise (instead of denoised action)
+#             prediction_type='epsilon'
+#         )
+
+        
+#         self.nets = nets
+#         self.noise_scheduler = noise_scheduler
+#         self.num_diffusion_iters = num_diffusion_iters
+#         self.obs_horizon = obs_horizon
+#         self.obs_dim = obs_dim
+#         self.vision_encoder = vision_encoder
+#         self.noise_pred_net = noise_pred_net
+#         self.action_horizon = action_horizon
+#         self.pred_horizon = pred_horizon
+#         self.lowdim_obs_dim = lowdim_obs_dim
+#         self.action_dim = action_dim
+# # # demo
 # with torch.no_grad():
 #     # example inputs
 #     image = torch.zeros((1, obs_horizon,3,96,96))
@@ -831,10 +857,10 @@ def test():
         # Batch of 8 force vectors
 
         # Forward pass
-        latent_embedding = model(image_input, force_input, batch_size, obs_horizon)
+        latent_embedding = model(image_input, force_input)
 
 
-        print(f'Epoch [{epoch+1}/{num_epochs}. {latent_embedding}')
+        print(f'Epoch [{epoch+1}/{num_epochs}. {latent_embedding.shape}')
 ##TODO: Make sure that new CNN can work with the new architecture for CrossAttention
-test()
+# test()
 

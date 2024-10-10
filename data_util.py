@@ -229,18 +229,16 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         if single_view:
             train_image_data = dataset_root['data']['images_B'][:]
             train_image_data = np.moveaxis(train_image_data, -1,1)
-            if Transformer:
-                print("center crop transformer")
-                train_image_data = center_crop(train_image_data, 224, 224)
+
         else:
             # float32, [0,1], (N,96,96,3)
-            train_image_data = dataset_root['data']['images_A'][:]
+            train_image_data = dataset_root['data']['images_B'][:]
             train_image_data = np.moveaxis(train_image_data, -1,1)
-            train_image_data_second_view = dataset_root['data']['images_B'][:]
+            train_image_data_second_view = dataset_root['data']['images_A'][:]
             train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
-            if Transformer:
-                print("center crop transformer")
-                train_image_data_second_view = center_crop(train_image_data_second_view, 224, 224)
+        if Transformer:
+            print("center crop transformer")
+            train_image_data = center_crop(train_image_data, 224, 224)
 
         # (N,3,96,96)
         # (N, D)

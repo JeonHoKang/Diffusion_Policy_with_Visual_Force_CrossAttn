@@ -19,7 +19,13 @@ def train_Real_Robot(continue_training=False,
                      force_encode = False,
                      cross_attn = False):
     
-    print(f"Training model with vision: {encoder} with {action_def} action and Force: {force_mod} force embedding : {force_encode}")
+
+    if force_encode:
+        cross_attn = False
+    if cross_attn:
+        force_encode = False
+
+    print(f"Training model with vision single_view: {single_view}: {encoder} with {action_def} action and Force: {force_mod} force embedding : {force_encode} cross attn: {cross_attn}")
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
     modality = "without_force"
     view = "dual_view"
@@ -31,7 +37,8 @@ def train_Real_Robot(continue_training=False,
                                     action_def = action_def, 
                                     force_mod = force_mod, 
                                     single_view= single_view, 
-                                    force_encode=force_encode)
+                                    force_encode=force_encode,
+                                    cross_attn=cross_attn)
     
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
@@ -90,38 +97,39 @@ def train_Real_Robot(continue_training=False,
                         nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
                     if force_mod:
                         nforce = nbatch['force'][:,:diffusion.obs_horizon].to(device)
-
+                    else:
+                        nforce = None
                     nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
                     naction = nbatch['action'].to(device)
                     
                     ### Debug sequential data structure. It shoud be consecutive
-                    # import matplotlib.pyplot as plt
-                    # imdata1 = nimage[0].cpu()
-                    # imdata1 = imdata1.numpy()
+                    import matplotlib.pyplot as plt
+                    imdata1 = nimage[0].cpu()
+                    imdata1 = imdata1.numpy()
                     # imdata2 = nimage_second_view[0].cpu()
                     # imdata2 = imdata2.numpy()
           
-                    # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-                    # for j in range(2):
-                    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                    #     img = imdata2[j].transpose(1, 2, 0)
+                    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+                    for j in range(2):
+                        # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+                        img = imdata1[j].transpose(1, 2, 0)
                         
-                    #     # Plot the image on the corresponding subplot
-                    #     axes[j].imshow(img)
-                    #     axes[j].axis('off')  # Hide the axes
+                        # Plot the image on the corresponding subplot
+                        axes[j].imshow(img)
+                        axes[j].axis('off')  # Hide the axes
 
-                    #     # Show the plot
-                    # plt.show()  
+                        # Show the plot
+                    plt.show()  
 
 
 
                     B = nagent_pos.shape[0]
-
-                    # encoder vision features
-                    image_features = diffusion.nets['vision_encoder'](
-                        nimage.flatten(end_dim=1))
-                    image_features = image_features.reshape(
-                        *nimage.shape[:2],-1)
+                    if not cross_attn:
+                        # encoder vision features
+                        image_features = diffusion.nets['vision_encoder'](
+                            nimage.flatten(end_dim=1))
+                        image_features = image_features.reshape(
+                            *nimage.shape[:2],-1)
                     # (B,obs_horizon,D)
                     if not single_view:
                     # encoder vision features
@@ -136,15 +144,26 @@ def train_Real_Robot(continue_training=False,
                             *nforce.shape[:2],-1)
                     else:
                         force_feature = nforce
+                    
+                    if cross_attn:
+                        joint_features = diffusion.nets['cross_attn_encoder'](
+                            nimage.flatten(end_dim=1), (nforce.flatten(end_dim=1)))
+
                     # (B,obs_horizon,D)
-                    if force_mod and single_view:
+                    if force_mod and single_view and not cross_attn:
                         obs_features = torch.cat([image_features, force_feature, nagent_pos], dim=-1)
-                    elif force_mod and not single_view:
+                    elif force_mod and not single_view and not cross_attn:
                         obs_features = torch.cat([image_features, image_features_second_view, force_feature, nagent_pos], dim=-1)
                     elif not force_mod and single_view:
                         obs_features = torch.cat([image_features, nagent_pos], dim=-1)
-                    else:
+                    elif not force_mod and not single_view:
                         obs_features = torch.cat([image_features, image_features_second_view , nagent_pos], dim=-1)
+                    elif single_view and cross_attn:
+                        obs_features = torch.cat([joint_features , nagent_pos], dim=-1)
+                    elif not single_view and cross_attn:
+                        obs_features = torch.cat([joint_features, image_features_second_view, nagent_pos], dim=-1)
+                    else:
+                        print("Check your configuration for training")
                     
                     obs_cond = obs_features.flatten(start_dim=1)
                     # (B, obs_horizon * obs_dim)
@@ -212,4 +231,4 @@ def train_Real_Robot(continue_training=False,
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True, single_view= False, force_encode = True, cross_attn = False)
+    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True, single_view= False, force_encode = False, cross_attn = True)
