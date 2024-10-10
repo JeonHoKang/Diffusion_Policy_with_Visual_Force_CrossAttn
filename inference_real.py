@@ -311,15 +311,17 @@ class EvaluateRealRobot:
         self.max_steps = max_steps
         self.ema_nets = ema_nets
         self.step_idx = step_idx
-
         if single_view:
             self.pipeline_B = pipeline_B
             self.camera_device = camera_devices
             self.align_B = align_B
+            self.pipeline_B.start(config_B)
+
         else:
             self.pipeline_B = pipeline_B
             self.camera_device = camera_devices
             self.align_B = align_B
+            self.pipeline_B.start(config_B)
             self.pipeline_A = pipeline_A
             self.align_A = align_A
             self.pipeline_A.start(config_A)
@@ -328,13 +330,14 @@ class EvaluateRealRobot:
         self.action_def = action_def
         time.sleep(4)
         self.force_mod = force_mod
+        self.single_view = single_view
+
         obs = self.get_observation()
          # keep a queue of last 2 steps of observations
         obs_deque = collections.deque(
             [obs] * diffusion.obs_horizon, maxlen=diffusion.obs_horizon)
 
         self.obs_deque = obs_deque
-        self.single_view = single_view
 
     def get_observation(self):
         ### Get initial observation for the
@@ -587,7 +590,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2700_clock_clean_res18_delta.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2000_clock_clean_Transformer_delta.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
@@ -639,6 +642,7 @@ class EvaluateRealRobot:
                 # Convert stats['action']['min'] and ['max'] to numpy arrays with float32 type
                 stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
                 stats['action']['max'] = np.array(stats['action']['max'], dtype=np.float32)
+        force_status = list()
 
         with tqdm(total=max_steps, desc="Eval Real Robot") as pbar:
             while not done:
@@ -737,6 +741,8 @@ class EvaluateRealRobot:
 
                     # save observations
                     obs_deque.append(obs)
+                    if self.force_mod:
+                        force_status.append(obs['force'])
 
                     # and reward/vis
                     # rewards.append(reward)
@@ -755,15 +761,43 @@ class EvaluateRealRobot:
         # print('Score: ', max(rewards))
         # return imgs
 
+        force = np.array(force_status)
+        Fx = force[:, 0]
+        Fy = force[:, 1]
+        Fz = force[:, 2]
+
+        # Create a time vector or use index for x-axis
+        time = np.arange(len(Fx))
+
+        # Plotting the force components
+        plt.figure(figsize=(10, 6))
+        plt.plot(time, Fx, label='Fx', color='r', linestyle='-', linewidth=2)
+        plt.plot(time, Fy, label='Fy', color='g', linestyle='--', linewidth=2)
+        plt.plot(time, Fz, label='Fz', color='b', linestyle='-.', linewidth=2)
+
+        # Add titles and labels
+        plt.title('Force Components Over Time', fontsize=16)
+        plt.xlabel('Time', fontsize=14)
+        plt.ylabel('Force (N)', fontsize=14)
+
+        # Add a grid
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+        # Add a legend
+        plt.legend(loc='best', fontsize=12)
+
+        # Show the plot
+        plt.tight_layout()
+        plt.show()
 
 def main():
     # Max steps will dicate how long the inference duration is going to be so it is very important
     # Initialize RealSense pipelines for both cameras
     rclpy.init()
     try:  
-        max_steps = 300
+        max_steps = 100
         # Evaluate Real Robot Environment
-        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "resnet", force_mod=True, single_view= False)
+        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "Transformer", force_mod=False, single_view= False)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape
