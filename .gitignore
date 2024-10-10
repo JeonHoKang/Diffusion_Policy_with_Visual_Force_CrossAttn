@@ -5,3 +5,4 @@ __pycache__/
 *.json
 *stats*
 *.pth
+*.ckpt

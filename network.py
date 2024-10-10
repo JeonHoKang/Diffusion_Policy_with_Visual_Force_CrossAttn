@@ -283,7 +283,7 @@ class DiffusionPolicy:
 
         # construct ResNet18 encoder
         # if you have multiple camera views, use seperate encoder weights for each view.
-        vision_encoder = timm.create_model('vit_base_patch16_224', pretrained=True)
+        vision_encoder = train_utils().get_resnet("resnet18")
         # Define Second vision encoder
 
 
@@ -292,7 +292,7 @@ class DiffusionPolicy:
         # performance will tank if you forget to do this!
         vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
         # ResNet18 has output dim of 512
-        vision_feature_dim = 768
+        vision_feature_dim = 512
         # agent_pos is 2 dimensional
         lowdim_obs_dim = 2
         # observation feature has 514 dims in total per step

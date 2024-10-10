@@ -25,6 +25,108 @@ import json
 #@markdown `cond` is applied to `x` with [FiLM](https://arxiv.org/abs/1709.07871) conditioning.
 
 
+
+import torch
+import torch.nn as nn
+
+class ForceEncoder(nn.Module):
+    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, cross_attn = False):
+        super(ForceEncoder, self).__init__()
+        self.cross_attn = cross_attn
+        self.batch_size = batch_size
+        self.obs_horizon = obs_horizon
+        # Force feature extraction with Group Normalization
+        # Convolutional layers to encode force data with Group Normalization
+        self.conv_encoder = nn.Sequential(
+            nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(num_groups=16, num_channels=32),
+            nn.ReLU(),
+            nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(num_groups=16, num_channels=64),
+            nn.ReLU(),
+            nn.Flatten()
+        )
+
+
+        self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
+
+    def forward(self, x):
+        x = x.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
+        latent_vector = self.conv_encoder(x)
+        latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
+        if self.cross_attn:
+            latent_vector = latent_vector.view(self.batch_size, 2, 512)
+        return latent_vector
+    
+class CrossAttentionFusion(nn.Module):
+    def __init__(self, image_dim, force_dim, hidden_dim:int = 512, batch_size = 48, obs_horizon = 2, resnet = True):
+        super(CrossAttentionFusion, self).__init__()
+        C,H,W = image_dim
+        # Image feature extraction
+        # Image feature extraction layers
+        if not resnet:
+            self.image_encoder = nn.Sequential(
+                nn.Conv2d(in_channels=C, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.GroupNorm(num_groups=16, num_channels=64),  # Applying GroupNorm instead of BatchNorm
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2),
+                nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
+                nn.GroupNorm(num_groups=16, num_channels=128),  # Applying GroupNorm to the second layer
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2),
+                nn.Flatten()
+            )
+        else:
+            self.image_encoder = train_utils().get_resnet("resnet18")
+            self.image_encoder = train_utils().replace_bn_with_gn(self.image_encoder)
+
+        # Dynamically calculate the image_dim after convolution and pooling
+        with torch.no_grad():
+            sample_input = torch.zeros(1, C, H, W)  # Batch size of 1
+            sample_output = self.image_encoder(sample_input)
+            image_dim = sample_output.shape[1]  # Get the flattened image dimension
+
+        # Fully connected layer to map the image features to hidden_dim
+        self.image_fc = nn.Linear(image_dim, hidden_dim)
+
+        # Force feature extraction
+        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, cross_attn=True)
+        # Cross-attention layers
+        self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4)
+
+        # Fusion layers to create joint embedding
+        self.fusion_layer = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
+
+    def forward(self, image_input, force_input, batch_size, obs_horizon):
+        # Encode image and force data
+        image_features = self.image_encoder(image_input)
+
+        image_features = self.image_fc(image_features)
+        image_features = image_features.view(batch_size, obs_horizon, -1)
+
+        image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
+
+        # Reshape for attention: (sequence_length, batch_size, hidden_dim)
+
+        force_features = self.force_encoder(force_input)
+
+        # force_features = force_features.view(batch_size, obs_horizon, -1)
+        force_features = force_features.permute(1, 0, 2)  # Correct shape: (num_forces, batch_size, hidden_dim)
+
+
+        # Cross-attention operation
+        attn_output, _ = self.attention(query=force_features, key=image_features, value=image_features)
+        attn_output = attn_output.permute(1, 0, 2)  # Shape: (batch_size, num_forces, hidden_dim)
+
+        # Generate the fused embedding
+        joint_embedding = self.fusion_layer(attn_output)
+
+        return joint_embedding
+
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
@@ -285,7 +387,24 @@ dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98_
 import timm
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
-    def __init__(self, train=True, encoder = "resnet", action_def = "delta", force_mod:bool = False, single_view:bool = False):
+    def __init__(self,
+                train=True, 
+                encoder = "resnet", 
+                action_def = "delta", 
+                force_mod:bool = False, 
+                single_view:bool = False, 
+                force_encode = True,
+                cross_attn: bool = False):
+        # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
+        action_dim = 9
+        # parameters
+        pred_horizon = 16
+        obs_horizon = 2
+        action_horizon = 8
+        #|o|o|                             observations: 2
+        #| |a|a|a|a|a|a|a|a|               actions executed: 8
+        #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
+        batch_size = 32
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -307,7 +426,8 @@ class DiffusionPolicy_Real:
         if not single_view:
             vision_encoder = train_utils().get_resnet('resnet18')
             vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
-
+        if force_encode:
+            force_encoder = ForceEncoder(4, 512, batch_size = batch_size, obs_horizon = obs_horizon, cross_attn=cross_attn)
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
         # performance will tank if you forget to do this!
@@ -316,25 +436,19 @@ class DiffusionPolicy_Real:
         if single_view:
             vision_feature_dim = 512
         else:
-            vision_feature_dim = 512+ 512
-
-        force_feature_dim = 4
+            vision_feature_dim = 512 + 512
+        if force_encode:
+            force_feature_dim = 512
+        else:
+            force_feature_dim = 4
         # agent_pos is seven (x,y,z, w, y, z, w ) dimensional
         lowdim_obs_dim = 9
         # observation feature has 514 dims in total per step
         if force_mod:
-            obs_dim = vision_feature_dim + lowdim_obs_dim + force_feature_dim
+            obs_dim = vision_feature_dim + force_feature_dim  + lowdim_obs_dim
         else:            
             obs_dim = vision_feature_dim + lowdim_obs_dim
-        # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
-        action_dim = 9
-        # parameters
-        pred_horizon = 16
-        obs_horizon = 2
-        action_horizon = 8
-        #|o|o|                             observations: 2
-        #| |a|a|a|a|a|a|a|a|               actions executed: 8
-        #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
+
         if train:
             # create dataset from file
             dataset = RealRobotDataSet(
@@ -356,7 +470,7 @@ class DiffusionPolicy_Real:
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
-                batch_size=48,
+                batch_size=batch_size,
                 num_workers=4,
                 shuffle=True,
                 # accelerate cpu-gpu transfer
@@ -422,13 +536,27 @@ class DiffusionPolicy_Real:
                 'vision_encoder': vision_encoder2,
                 'noise_pred_net': noise_pred_net
             })
-        else:
+        elif single_view and force_encode:
             # the final arch has 2 parts
+            nets = nn.ModuleDict({
+                'vision_encoder': vision_encoder2,
+                'force_encoder': force_encoder,
+                'noise_pred_net': noise_pred_net
+            })   
+        elif not single_view and force_encode:
+            nets = nn.ModuleDict({
+                'vision_encoder': vision_encoder,
+                'vision_encoder2': vision_encoder2,
+                'force_encoder': force_encoder,
+                'noise_pred_net': noise_pred_net
+            })
+        elif not single_view and not force_encode:
             nets = nn.ModuleDict({
                 'vision_encoder': vision_encoder,
                 'vision_encoder2': vision_encoder2,
                 'noise_pred_net': noise_pred_net
             })
+
         # diffusion iteration
         num_diffusion_iters = 100
 
@@ -453,7 +581,8 @@ class DiffusionPolicy_Real:
             self.vision_encoder = vision_encoder
 
         self.vision_encoder2 = vision_encoder2
-
+        if force_encode:
+            self.force_encoder = force_encoder
         self.noise_pred_net = noise_pred_net
         self.action_horizon = action_horizon
         self.pred_horizon = pred_horizon
@@ -626,4 +755,86 @@ class DiffusionPolicy_Real_SingleView:
 #     # and is dependent on the diffusion noise schedule
 #     denoised_action = noised_action - noise
 
+
+def test():
+    # create dataset from file
+    obs_horizon = 2 
+    dataset = RealRobotDataSet(
+        dataset_path=dataset_path,
+        pred_horizon=16,
+        obs_horizon=obs_horizon,
+        action_horizon=8,
+        Transformer= False,
+        force_mod = True,
+        single_view= True
+    )
+    # save training data statistics (min, max) for each dim
+    stats = dataset.stats
+
+    batch_size = 10
+    # create dataloader
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=4,
+        shuffle=True,
+        # accelerate cpu-gpu transfer
+        pin_memory=True,
+        # don't kill worker process afte each epoch
+        persistent_workers=True
+    )
+    
+    batch = next(iter(dataloader))
+    print("batch['image'].shape:", batch['image'].shape)
+
+    # ### For debugging purposes uncomment
+    # import matplotlib.pyplot as plt
+    # imdata = dataset[100]['image']
+    # if imdata.dtype == np.float32 or imdata.dtype == np.float64:
+    #     imdata = imdata
+    # img1 = imdata[0]
+    # img2 = imdata[1]
+    # # Loop through the two different "channels"
+    # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    # for i in range(2):
+    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+    #     img = np.transpose(imdata[i], (1, 2, 0))
+        
+    #     # Display the image in the i-th subplot
+    #     axes[i].imshow(img)
+    #     axes[i].set_title(f'Channel {i + 1}')
+    #     axes[i].axis('off')
+
+    # # Show the plot
+    # plt.show()  
+    
+    print("batch['agent_pos'].shape:", batch['agent_pos'].shape)    
+    print("batch['force'].shape:", batch['force'].shape)
+    print("batch['action'].shape", batch['action'].shape)
+    image_input_shape  = (3, 320, 240)
+    force_dim = 4
+    hidden_dim = 512
+
+    import torch.optim as optim
+    device = torch.device('cuda')
+    # Standard ADAM optimizer
+    # Note that EMA parametesr are not optimized
+    model = CrossAttentionFusion(image_input_shape, force_dim, hidden_dim, batch_size = batch_size, obs_horizon=obs_horizon, resnet= True)
+    model = model.to(device)
+    num_epochs = 10  # Set the number of epochs
+    nimage = batch['image'][:,:2].to(device)
+    nforce = batch['force'][:,:2].to(device)
+    for epoch in range(num_epochs):
+        # Example random input data for demonstration
+        image_input = nimage.flatten(end_dim=1).to(device)  # Batch of 8 images
+        force_input = nforce.flatten(end_dim=1).to(device)
+        # Batch of 8 force vectors
+
+        # Forward pass
+        latent_embedding = model(image_input, force_input, batch_size, obs_horizon)
+
+
+        print(f'Epoch [{epoch+1}/{num_epochs}. {latent_embedding}')
+##TODO: Make sure that new CNN can work with the new architecture for CrossAttention
+test()
 

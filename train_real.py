@@ -10,8 +10,16 @@ import matplotlib.pyplot as plt
 
 torch.cuda.empty_cache()
 
-def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "resnet", action_def: str = "delta", force_mod: bool = True, single_view: bool = False):
-    print(f"Training model with vision: {encoder} with {action_def} action and Force: {force_mod}")
+def train_Real_Robot(continue_training=False, 
+                     start_epoch = 0, 
+                     encoder:str = "resnet",
+                     action_def: str = "delta",
+                     force_mod: bool = True,
+                     single_view: bool = False, 
+                     force_encode = False,
+                     cross_attn = False):
+    
+    print(f"Training model with vision: {encoder} with {action_def} action and Force: {force_mod} force embedding : {force_encode}")
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
     modality = "without_force"
     view = "dual_view"
@@ -19,7 +27,12 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
         modality = "with_force"
     if single_view:
         view = "single_view"
-    diffusion = DiffusionPolicy_Real(encoder= encoder, action_def = action_def, force_mod = force_mod, single_view= single_view)
+    diffusion = DiffusionPolicy_Real(encoder= encoder,
+                                    action_def = action_def, 
+                                    force_mod = force_mod, 
+                                    single_view= single_view, 
+                                    force_encode=force_encode)
+    
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
 
@@ -116,12 +129,18 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
                             nimage_second_view.flatten(end_dim=1))
                         image_features_second_view = image_features_second_view.reshape(
                             *nimage_second_view.shape[:2],-1)
-                        
+                    
+                    if force_mod and force_encode:
+                        force_feature = diffusion.nets['force_encoder'](nforce.flatten(end_dim=1))
+                        force_feature = force_feature.reshape(
+                            *nforce.shape[:2],-1)
+                    else:
+                        force_feature = nforce
                     # (B,obs_horizon,D)
                     if force_mod and single_view:
-                        obs_features = torch.cat([image_features, nforce, nagent_pos], dim=-1)
+                        obs_features = torch.cat([image_features, force_feature, nagent_pos], dim=-1)
                     elif force_mod and not single_view:
-                        obs_features = torch.cat([image_features, image_features_second_view, nforce, nagent_pos], dim=-1)
+                        obs_features = torch.cat([image_features, image_features_second_view, force_feature, nagent_pos], dim=-1)
                     elif not force_mod and single_view:
                         obs_features = torch.cat([image_features, nagent_pos], dim=-1)
                     else:
@@ -175,7 +194,7 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}_{view}_{modality}.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}_{view}_{modality}_force_en_{force_encode}.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
@@ -193,4 +212,4 @@ def train_Real_Robot(continue_training=False, start_epoch = 0, encoder:str = "re
 
 
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True, single_view= False)
+    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True, single_view= False, force_encode = True, cross_attn = False)

@@ -333,4 +333,4 @@ def test():
     result = encoder(obs_dict)
     print(result.shape)
     
-test()
+# test()
