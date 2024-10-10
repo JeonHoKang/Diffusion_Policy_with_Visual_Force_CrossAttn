@@ -1,0 +1,7 @@
+# config.yaml
+database:
+  host: localhost
+  port: 3306
+user:
+  name: John Doe
+  age: 30

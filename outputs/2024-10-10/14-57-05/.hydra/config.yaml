@@ -1,0 +1,11 @@
+name: resnet_delta_force_mod_single_veiw_force_encode
+model_config:
+  continue_training: false
+  start_epoch: 0
+  end_epoch: 3000
+  encoder: resnet
+  action_def: delta
+  force_mod: true
+  single_view: false
+  force_encode: false
+  cross_attn: true

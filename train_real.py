@@ -10,22 +10,27 @@ import matplotlib.pyplot as plt
 
 torch.cuda.empty_cache()
 
-def train_Real_Robot(continue_training=False, 
-                     start_epoch = 0, 
-                     encoder:str = "resnet",
-                     action_def: str = "delta",
-                     force_mod: bool = True,
-                     single_view: bool = False, 
-                     force_encode = False,
-                     cross_attn = False):
-    
+import hydra
+from omegaconf import DictConfig
+
+@hydra.main(version_base=None, config_path="config", config_name="clock_clean_resnet_delta_force_mod_single_view_force_encode")
+def train_Real_Robot(cfg: DictConfig):
+    continue_training=  cfg.model_config.continue_training
+    start_epoch = cfg.model_config.start_epoch
+    end_epoch= cfg.model_config.end_epoch
+    encoder:str = cfg.model_config.encoder
+    action_def: str = cfg.model_config.action_def
+    force_mod: bool = cfg.model_config.force_mod
+    single_view: bool = cfg.model_config.single_view
+    force_encode = cfg.model_config.force_encode
+    cross_attn = cfg.model_config.cross_attn
 
     if force_encode:
         cross_attn = False
     if cross_attn:
         force_encode = False
 
-    print(f"Training model with vision single_view: {single_view}: {encoder} with {action_def} action and Force: {force_mod} force embedding : {force_encode} cross attn: {cross_attn}")
+    print(f"Training model with vision {cfg.name}")
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
     modality = "without_force"
     view = "dual_view"
@@ -48,7 +53,6 @@ def train_Real_Robot(continue_training=False,
     #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
     #@markdown to load pre-trained weights
 
-    num_epochs = 3000
 
     # Exponential Moving Average
     # accelerates training and improves stability
@@ -77,12 +81,12 @@ def train_Real_Robot(continue_training=False,
         name='cosine',
         optimizer=optimizer,
         num_warmup_steps=500,
-        num_training_steps=len(diffusion.dataloader) * num_epochs
+        num_training_steps=len(diffusion.dataloader) * end_epoch
     )
     # Log loss for epochs
     epoch_losses = []
 
-    with tqdm(range(start_epoch, num_epochs), desc='Epoch') as tglobal:
+    with tqdm(range(start_epoch, end_epoch), desc='Epoch') as tglobal:
         # epoch loop
         for epoch_idx in tglobal:
             epoch_loss = list()
@@ -211,7 +215,7 @@ def train_Real_Robot(continue_training=False,
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
-            if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == num_epochs:
+            if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == end_epoch:
                 # Save only the state_dict of the model, including relevant submodules
                 torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}_{view}_{modality}_force_en_{force_encode}.pth'))
     # Plot the loss after training is complete
@@ -229,6 +233,5 @@ def train_Real_Robot(continue_training=False,
     ema.copy_to(ema_nets.parameters())
 
 
-
 if __name__ == "__main__":
-    train_Real_Robot(continue_training=False, encoder = "resnet", action_def="delta", force_mod = True, single_view= False, force_encode = False, cross_attn = True)
+    train_Real_Robot()
