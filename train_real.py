@@ -13,7 +13,7 @@ torch.cuda.empty_cache()
 import hydra
 from omegaconf import DictConfig
 
-@hydra.main(version_base=None, config_path="config", config_name="clock_clean_resnet_delta_force_mod_single_view_force_encode")
+@hydra.main(version_base=None, config_path="config", config_name="clock_clean_resnet_delta_force_mod_dual_view_cross_attn")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
@@ -107,24 +107,31 @@ def train_Real_Robot(cfg: DictConfig):
                     naction = nbatch['action'].to(device)
                     
                     ### Debug sequential data structure. It shoud be consecutive
-                    import matplotlib.pyplot as plt
-                    imdata1 = nimage[0].cpu()
-                    imdata1 = imdata1.numpy()
+                    # import matplotlib.pyplot as plt
+                    # imdata1 = nimage[0].cpu()
+                    # imdata1 = imdata1.numpy()
                     # imdata2 = nimage_second_view[0].cpu()
                     # imdata2 = imdata2.numpy()
           
-                    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-                    for j in range(2):
-                        # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                        img = imdata1[j].transpose(1, 2, 0)
-                        
-                        # Plot the image on the corresponding subplot
-                        axes[j].imshow(img)
-                        axes[j].axis('off')  # Hide the axes
+                    # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+                    # for j in range(2):
+                    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+                    #     img = imdata1[j].transpose(1, 2, 0)
 
-                        # Show the plot
-                    plt.show()  
+                    #     # Plot the image on the corresponding subplot
+                    #     axes[j].imshow(img)
+                    #     axes[j].axis('off')  # Hide the axes
+                    #     # Show the plot
+                    # plt.show()  
+                    # for j in range(2):
+                    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+                    #     img2 = imdata2[j].transpose(1, 2, 0)
 
+                    #     # Plot the image on the corresponding subplot
+                    #     axes[j].imshow(img2)
+                    #     axes[j].axis('off')  # Hide the axes
+                    #     # Show the plot
+                    # plt.show()  
 
 
                     B = nagent_pos.shape[0]
@@ -217,10 +224,10 @@ def train_Real_Robot(cfg: DictConfig):
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == end_epoch:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'checkpoint_{epoch_idx+1}_clock_clean_{encoder}_{action_def}_{view}_{modality}_force_en_{force_encode}.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{epoch_idx+1}.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
-    plt.plot(range(1, num_epochs + 1), epoch_losses, marker='o', label='Training Loss')
+    plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.title('Training Loss over Epocshs')
