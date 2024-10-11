@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 import os
-from data_util import RealRobotDataSet_SingleView, RealRobotDataSet
+from data_util import RealRobotDataSet
 from train_utils import train_utils
 import json
 #@markdown ### **Network**
@@ -50,15 +50,16 @@ class ForceEncoder(nn.Module):
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
+        current_batch_size = x.size(0)
         x = x.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
         latent_vector = self.conv_encoder(x)
         latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
         if self.cross_attn:
-            latent_vector = latent_vector.view(self.batch_size, 2, 512)
+            latent_vector = latent_vector.reshape(int(current_batch_size/2), self.obs_horizon, -1)
         return latent_vector
     
 class CrossAttentionFusion(nn.Module):
-    def __init__(self, image_dim, force_dim, hidden_dim:int = 512, batch_size = 48, obs_horizon = 2, resnet = True):
+    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, resnet = True):
         super(CrossAttentionFusion, self).__init__()
         self.obs_horizon = obs_horizon
         self.batch_size = batch_size
@@ -104,10 +105,12 @@ class CrossAttentionFusion(nn.Module):
 
     def forward(self, image_input, force_input):
         # Encode image and force data
+        current_batch_size = image_input.size(0)
+
         image_features = self.image_encoder(image_input)
 
         image_features = self.image_fc(image_features)
-        image_features = image_features.view(self.batch_size, self.obs_horizon, -1)
+        image_features = image_features.view(int(current_batch_size/2), self.obs_horizon, -1)
 
         image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
 
@@ -399,13 +402,13 @@ class DiffusionPolicy_Real:
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
         # parameters
-        pred_horizon = 16
+        pred_horizon = 8
         obs_horizon = 2
-        action_horizon = 8
+        action_horizon = 4
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size = 32
+        batch_size = 48
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -473,6 +476,7 @@ class DiffusionPolicy_Real:
             with open(f'stats_clock_clean_{encoder}_{action_def}_{modality}.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
+
             # create dataloader
             dataloader = torch.utils.data.DataLoader(
                 dataset,
@@ -482,7 +486,7 @@ class DiffusionPolicy_Real:
                 # accelerate cpu-gpu transfer
                 pin_memory=True,
                 # don't kill worker process afte each epoch
-                persistent_workers=True
+                persistent_workers=True,
             )
 
             self.dataloader = dataloader
