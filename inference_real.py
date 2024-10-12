@@ -428,7 +428,7 @@ class EvaluateRealRobot:
         
 
 
-         ### Visualqqqqqqqqqqqqqqqqqqqqqqqqqqizing purposes
+         ### Visualizing purposes
         # import matplotlib.pyplot as plt
         # plt.imshow(image_A_rgb)
         # plt.show()
@@ -584,7 +584,7 @@ class EvaluateRealRobot:
         return obs
     
         # the final arch has 2 parts
-    ###### Load Pretrained 
+    ###### Load Pretrained 1
     def load_pretrained(self, diffusion):
 
         load_pretrained = True
@@ -683,12 +683,12 @@ class EvaluateRealRobot:
                 with torch.no_grad():
                     # get image features
                     if not self.single_view:
-                        image_features_second_view = ema_nets['vision_encoder'](nimages)
+                        image_features_second_view = ema_nets['vision_encoder'](nimages) # previously trained one vision_encoder 1
                     # (2,512)
                     if not cross_attn:
                         image_features = ema_nets['vision_encoder2'](nimages_second_view)
                     if force_encode and not cross_attn:
-                        force_feature = ema_nets['force_encoder'](nforce_observation)
+                        force_feature = ema_nets['force_encoder2'](nforce_observation)
                     elif not force_encode and cross_attn:
                         joint_features = ema_nets['cross_attn_encoder'](nimages_second_view, nforce_observation)
                     # concat with low-dim observations
