@@ -13,4 +13,5 @@ model_config:
   force_mod: False
   single_view: True
   force_encode: False
+  force_encoder: "CNN"
   cross_attn: False

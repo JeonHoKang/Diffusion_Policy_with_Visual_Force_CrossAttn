@@ -30,36 +30,53 @@ import torch
 import torch.nn as nn
 
 class ForceEncoder(nn.Module):
-    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, cross_attn = False):
+    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, force_encoder = "CNN", cross_attn = False):
         super(ForceEncoder, self).__init__()
         self.cross_attn = cross_attn
         self.batch_size = batch_size
         self.obs_horizon = obs_horizon
+        self.force_encoder = force_encoder
+        print(f"force_encoder: "{force_encoder})
         # Force feature extraction with Group Normalization
         # Convolutional layers to encode force data with Group Normalization
-        self.conv_encoder = nn.Sequential(
-            nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(num_groups=16, num_channels=32),
-            nn.ReLU(),
-            nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1),
-            nn.GroupNorm(num_groups=16, num_channels=64),
-            nn.ReLU(),
-            nn.Flatten()
-        )
+        if force_encoder == "CNN":
+            self.conv_encoder = nn.Sequential(
+                nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1),
+                nn.GroupNorm(num_groups=16, num_channels=32),
+                nn.ReLU(),
+                nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.GroupNorm(num_groups=16, num_channels=64),
+                nn.ReLU(),
+                nn.Flatten()
+            )
+        elif force_encoder == "Transformer":
+            self.force_embedding = nn.Linear(4, 512)  # Project 3D force to 512-dimensional embedding
+            # Define a single Transformer Encoder Layer
+            transformer_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
 
+            # Stack 6 layers of the Transformer Encoder Layer
+            self.transformer_encoder = nn.TransformerEncoder(transformer_layer, num_layers=6)            
+            self.fc = nn.Linear(512, 512)  # Optional final projection layer
+
+            
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
         current_batch_size = x.size(0)
         x = x.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
-        latent_vector = self.conv_encoder(x)
-        latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
+        if self.force_encoder == "CNN":
+            latent_vector = self.conv_encoder(x)
+            latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
+        elif self.force_encoder == "Transformer":
+            embedded_force = self.force_embedding(x)  # Shape: [seq_len, batch_size, 512]
+            latent_vector = self.transformer_encoder(embedded_force)  # Shape: [sequence_length, batch_size, embed_dim]
+            # latent_vector = self.fc(encoded_force.mean(dim=0))  # Get the final 512-dimensional output
         if self.cross_attn:
             latent_vector = latent_vector.reshape(int(current_batch_size/2), self.obs_horizon, -1)
         return latent_vector
     
 class CrossAttentionFusion(nn.Module):
-    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, resnet = True):
+    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, force_encoder = "CNN", resnet = True):
         super(CrossAttentionFusion, self).__init__()
         self.obs_horizon = obs_horizon
         self.batch_size = batch_size
@@ -92,7 +109,7 @@ class CrossAttentionFusion(nn.Module):
         self.image_fc = nn.Linear(image_dim, hidden_dim)
 
         # Force feature extraction
-        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, cross_attn=True)
+        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True)
         # Cross-attention layers
         self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4)
 
@@ -398,6 +415,7 @@ class DiffusionPolicy_Real:
                 force_mod:bool = False, 
                 single_view:bool = False, 
                 force_encode = False,
+                force_encoder = "CNN",
                 cross_attn: bool = False):
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
@@ -849,7 +867,7 @@ def test():
     device = torch.device('cuda')
     # Standard ADAM optimizer
     # Note that EMA parametesr are not optimized
-    model = CrossAttentionFusion(image_input_shape, force_dim, hidden_dim, batch_size = batch_size, obs_horizon=obs_horizon, resnet= True)
+    model = CrossAttentionFusion(image_input_shape, force_dim, hidden_dim, batch_size = batch_size, obs_horizon=obs_horizon, force_encoder = "Transformer", resnet= True)
     model = model.to(device)
     num_epochs = 10  # Set the number of epochs
     nimage = batch['image'][:,:2].to(device)
