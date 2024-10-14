@@ -43,6 +43,8 @@ from rclpy.utilities import timeout_sec_to_nsec
 from kuka_execute import KukaMotionPlanning
 import cv2
 from rotation_utils import quat_from_rot_m, rot6d_to_mat, mat_to_rot6d, quat_to_rot_m, normalize
+import hydra
+from omegaconf import DictConfig
 
 def wait_for_message(
     msg_type,
@@ -234,18 +236,14 @@ class EndEffectorPoseNode(Node):
             return None
 
         return response.solution.joint_state
+    
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False):
-        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def, force_mod=force_mod, single_view= single_view)
+    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encode = False, cross_attn = False):
+        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def, force_mod=force_mod, single_view= single_view, force_encode = force_encode, cross_attn = cross_attn)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
-        # ResNet18 has output dim of 512
-        if single_view:
-            vision_feature_dim = 512
-        else:
-            vision_feature_dim = 512 + 512
         # agent_pos is 2 dimensional
         # lowdim_obs_dim = 2
         # # observation feature has 514 dims in total per step
@@ -276,7 +274,8 @@ class EvaluateRealRobot:
         camera_context = rs.context()
         camera_devices = camera_context.query_devices()
         self.diffusion = diffusion
-        self.vision_feature_dim = vision_feature_dim
+        self.force_encode = force_encode
+        self.cross_attn = cross_attn
         if not single_view:
             if len(camera_devices) < 2:
                 raise RuntimeError("Two cameras are required, but fewer were detected.")
@@ -585,12 +584,12 @@ class EvaluateRealRobot:
         return obs
     
         # the final arch has 2 parts
-    ###### Load Pretrained 
+    ###### Load Pretrained 1
     def load_pretrained(self, diffusion):
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_2000_clock_clean_Transformer_delta.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_clock_clean_resnet_delta_with_force.pth"
             #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
@@ -622,8 +621,9 @@ class EvaluateRealRobot:
         force_obs = None
         single_view = self.single_view
         force_mod = self.force_mod
-
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_res18_delta.json', 'r') as f:
+        force_encode = self.force_encode
+        cross_attn = self.cross_attn
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_resnet_delta_with_force.json', 'r') as f:
             stats = json.load(f)
             if force_mod:
                 stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -671,27 +671,41 @@ class EvaluateRealRobot:
                 nimages_second_view = images_B
                 # device transfer
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
+                force_feature = None
                 if force_mod:
                     nforce_observation = torch.from_numpy(normalized_force_data).to(device, dtype=torch.float32)
+                    force_feature = nforce_observation
+
+
                 processed_agent_poses = np.hstack((nagent_poses, agent_poses[:,3:]))
                 nagent_poses = torch.from_numpy(processed_agent_poses).to(device, dtype=torch.float32)
                 # infer action
                 with torch.no_grad():
                     # get image features
                     if not self.single_view:
-                        image_features = ema_nets['vision_encoder'](nimages)
+                        image_features_second_view = ema_nets['vision_encoder'](nimages) # previously trained one vision_encoder 1
                     # (2,512)
-                    image_features_second_view = ema_nets['vision_encoder2'](nimages_second_view)
-
+                    if not cross_attn:
+                        image_features = ema_nets['vision_encoder2'](nimages_second_view)
+                    if force_encode and not cross_attn:
+                        force_feature = ema_nets['force_encoder2'](nforce_observation)
+                    elif not force_encode and cross_attn:
+                        joint_features = ema_nets['cross_attn_encoder'](nimages_second_view, nforce_observation)
                     # concat with low-dim observations
-                    if force_mod and single_view:
-                        obs_features = torch.cat([image_features_second_view, nforce_observation, nagent_poses], dim=-1)
-                    elif force_mod and not single_view:
-                        obs_features = torch.cat([image_features, image_features_second_view, nforce_observation, nagent_poses], dim=-1)
+                    if force_mod and single_view and not cross_attn:
+                        obs_features = torch.cat([image_features, force_feature, nagent_poses], dim=-1)
+                    elif force_mod and not single_view and not cross_attn:
+                        obs_features = torch.cat([image_features_second_view, image_features, force_feature, nagent_poses], dim=-1)
                     elif not force_mod and single_view:
-                        obs_features = torch.cat([image_features_second_view, nforce_observation], dim=-1)
+                        obs_features = torch.cat([image_features, nagent_poses], dim=-1)
+                    elif not force_mod and not single_view:
+                        obs_features = torch.cat([image_features_second_view, image_features, nagent_poses], dim=-1)
+                    elif single_view and cross_attn:
+                        obs_features = torch.cat([joint_features[0] , nagent_poses], dim=-1)
+                    elif not single_view and cross_attn:
+                        obs_features = torch.cat([joint_features[0], image_features_second_view, nagent_poses], dim=-1)
                     else:
-                        obs_features = torch.cat([image_features, image_features_second_view , nagent_poses], dim=-1)
+                        print("Check your configuration for training")
 
                     # reshape observation to (B,obs_horizon*obs_dim)
                     obs_cond = obs_features.unsqueeze(0).flatten(start_dim=1)
@@ -790,14 +804,16 @@ class EvaluateRealRobot:
         plt.tight_layout()
         plt.show()
 
-def main():
+@hydra.main(version_base=None, config_path="config", config_name="clock_clean_resnet_delta_force_mod_dual_view_force_mod_no_encode")
+def main(cfg: DictConfig):
     # Max steps will dicate how long the inference duration is going to be so it is very important
     # Initialize RealSense pipelines for both cameras
     rclpy.init()
     try:  
-        max_steps = 100
+        max_steps = 200
         # Evaluate Real Robot Environment
-        eval_real_robot = EvaluateRealRobot(max_steps, action_def = "delta", encoder = "Transformer", force_mod=False, single_view= False)
+        print(f"inference on {cfg.name}")
+        eval_real_robot = EvaluateRealRobot(max_steps= max_steps, action_def = cfg.model_config.action_def, encoder = cfg.model_config.encoder, force_mod=cfg.model_config.force_mod, single_view= cfg.model_config.single_view, force_encode = cfg.model_config.force_encode, cross_attn = cfg.model_config.cross_attn)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape
