@@ -402,13 +402,13 @@ class DiffusionPolicy_Real:
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
         # parameters
-        pred_horizon = 8
+        pred_horizon = 16
         obs_horizon = 2
-        action_horizon = 4
+        action_horizon = 8
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size = 48
+        batch_size = 82
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
