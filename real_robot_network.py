@@ -36,7 +36,7 @@ class ForceEncoder(nn.Module):
         self.batch_size = batch_size
         self.obs_horizon = obs_horizon
         self.force_encoder = force_encoder
-        print(f"force_encoder: "{force_encoder})
+        print(f"force_encoder: {force_encoder}")
         # Force feature extraction with Group Normalization
         # Convolutional layers to encode force data with Group Normalization
         if force_encoder == "CNN":
