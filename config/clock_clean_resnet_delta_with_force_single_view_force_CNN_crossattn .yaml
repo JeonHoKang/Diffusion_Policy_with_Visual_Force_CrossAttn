@@ -1,0 +1,17 @@
+# resnet+delta_force_mod_single_veiw_force_encode.yaml
+defaults:
+  - _self_
+
+name: clock_clean_resnet_delta_with_force_single_view_force_CNN_crossattn
+
+model_config:
+  continue_training: False
+  start_epoch: 0
+  end_epoch: 3000
+  encoder: "resnet"
+  action_def: "delta"
+  force_mod: True
+  single_view: True
+  force_encode: False
+  force_encoder: "CNN"
+  cross_attn: True
