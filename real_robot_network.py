@@ -52,7 +52,7 @@ class ForceEncoder(nn.Module):
         elif force_encoder == "Transformer":
             self.force_embedding = nn.Linear(4, 512)  # Project 3D force to 512-dimensional embedding
             # Define a single Transformer Encoder Layer
-            transformer_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
+            transformer_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8, batch_first= True)
 
             # Stack 6 layers of the Transformer Encoder Layer
             self.transformer_encoder = nn.TransformerEncoder(transformer_layer, num_layers=6)            
@@ -449,10 +449,16 @@ class DiffusionPolicy_Real:
             vision_encoder2 = train_utils().get_resnet('resnet18')
             vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         if force_encode:
-            force_encoder = ForceEncoder(4, 512, batch_size = batch_size, obs_horizon = obs_horizon, cross_attn=cross_attn)
+            force_encoder = ForceEncoder(4, 512, batch_size = batch_size,
+                                          obs_horizon = obs_horizon, 
+                                          force_encoder= force_encoder, 
+                                          cross_attn=cross_attn)
 
         if cross_attn:
-            joint_encoder = CrossAttentionFusion((3, 320, 240), 4, 512, batch_size = batch_size, obs_horizon=obs_horizon, resnet= True)
+            joint_encoder = CrossAttentionFusion((3, 320, 240), 4, 512, batch_size = batch_size, 
+                                                 obs_horizon=obs_horizon, 
+                                                 force_encoder = force_encoder, 
+                                                 resnet= True)
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
         # performance will tank if you forget to do this!
