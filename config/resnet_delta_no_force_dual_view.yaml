@@ -2,7 +2,7 @@
 defaults:
   - _self_
 
-name:  clock_clean_resnet_delta_no_force_single_view
+name:  resnet_delta_no_force_dual_view
 
 model_config:
   continue_training: False
@@ -11,7 +11,7 @@ model_config:
   encoder: "resnet"
   action_def: "delta"
   force_mod: False
-  single_view: True
+  single_view: False
   force_encode: False
   force_encoder: "CNN"
   cross_attn: False

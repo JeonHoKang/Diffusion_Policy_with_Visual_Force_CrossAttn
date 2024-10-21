@@ -2,7 +2,7 @@
 defaults:
   - _self_
 
-name:  clock_clean_resnet_delta_force_mod_single_veiw_force_no_encode
+name:  resnet_delta_force_mod_single_veiw_force_no_encode
 
 model_config:
   continue_training: False

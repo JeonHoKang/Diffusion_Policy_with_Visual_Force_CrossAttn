@@ -9,7 +9,9 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 import os
 from data_util import RealRobotDataSet
 from train_utils import train_utils
+from data_util import center_crop
 import json
+from transformer_obs_encoder import SimpleRGBObsEncoder
 #@markdown ### **Network**
 #@markdown
 #@markdown Defines a 1D UNet architecture `ConditionalUnet1D`
@@ -28,14 +30,33 @@ import json
 
 import torch
 import torch.nn as nn
+import timm
+
+def cross_center_crop(images, crop_height, crop_width):
+    # Get original dimensions: B (batch size), T (sequence length), C (channels), H (height), W (width)
+    B, T, C, H, W = images.shape
+    assert crop_height <= H and crop_width <= W, "Crop size should be smaller than the original size"
+    
+    # Calculate the center for height and width
+    start_y = (H - crop_height) // 2
+    start_x = (W - crop_width) // 2
+    
+    # Perform cropping for each image in the sequence
+    cropped_images = images[:, :, :, start_y:start_y + crop_height, start_x:start_x + crop_width]
+    
+    return cropped_images
 
 class ForceEncoder(nn.Module):
-    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, force_encoder = "CNN", cross_attn = False):
+    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, force_encoder = "CNN", cross_attn = False, im_encoder = "resnet"):
         super(ForceEncoder, self).__init__()
         self.cross_attn = cross_attn
         self.batch_size = batch_size
         self.obs_horizon = obs_horizon
         self.force_encoder = force_encoder
+        if im_encoder == "viT":
+            force_hidden_dim = 768
+        else:
+            force_hidden_dim = 512
         print(f"force_encoder: {force_encoder}")
         # Force feature extraction with Group Normalization
         # Convolutional layers to encode force data with Group Normalization
@@ -50,40 +71,41 @@ class ForceEncoder(nn.Module):
                 nn.Flatten()
             )
         elif force_encoder == "Transformer":
-            self.force_embedding = nn.Linear(4, 512)  # Project 3D force to 512-dimensional embedding
+            self.force_embedding = nn.Linear(4, force_hidden_dim)  # Project 3D force to 512-dimensional embedding
             # Define a single Transformer Encoder Layer
-            transformer_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8, batch_first= True)
+            transformer_layer = nn.TransformerEncoderLayer(d_model=force_hidden_dim, nhead=8, batch_first= True)
 
             # Stack 6 layers of the Transformer Encoder Layer
             self.transformer_encoder = nn.TransformerEncoder(transformer_layer, num_layers=6)            
-            self.fc = nn.Linear(512, 512)  # Optional final projection layer
+            self.fc = nn.Linear(force_hidden_dim, force_hidden_dim)  # Optional final projection layer
 
             
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
-        current_batch_size = x.size(0)
-        x = x.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
+        B,T,D = x.shape
+        force_input = x.reshape(B*T, D)
+        force_input = force_input.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
         if self.force_encoder == "CNN":
-            latent_vector = self.conv_encoder(x)
+            latent_vector = self.conv_encoder(force_input)
             latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
         elif self.force_encoder == "Transformer":
-            embedded_force = self.force_embedding(x)  # Shape: [seq_len, batch_size, 512]
+            embedded_force = self.force_embedding(force_input)  # Shape: [seq_len, batch_size, 512]
             latent_vector = self.transformer_encoder(embedded_force)  # Shape: [sequence_length, batch_size, embed_dim]
             # latent_vector = self.fc(encoded_force.mean(dim=0))  # Get the final 512-dimensional output
-        if self.cross_attn:
-            latent_vector = latent_vector.reshape(int(current_batch_size/2), self.obs_horizon, -1)
+        latent_vector = latent_vector.reshape(int(B), self.obs_horizon, -1)
         return latent_vector
     
 class CrossAttentionFusion(nn.Module):
-    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, force_encoder = "CNN", resnet = True):
+    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, force_encoder = "CNN", im_encoder = "resnet"):
         super(CrossAttentionFusion, self).__init__()
         self.obs_horizon = obs_horizon
         self.batch_size = batch_size
+        self.im_encoder = im_encoder
         C,H,W = image_dim
         # Image feature extraction
         # Image feature extraction layers
-        if not resnet:
+        if im_encoder == "CNN":
             self.image_encoder = nn.Sequential(
                 nn.Conv2d(in_channels=C, out_channels=64, kernel_size=3, stride=1, padding=1),
                 nn.GroupNorm(num_groups=16, num_channels=64),  # Applying GroupNorm instead of BatchNorm
@@ -95,13 +117,20 @@ class CrossAttentionFusion(nn.Module):
                 nn.MaxPool2d(kernel_size=2),
                 nn.Flatten()
             )
-        else:
-            self.image_encoder = train_utils().get_resnet("resnet18")
+        elif im_encoder == "resnet":
+            self.image_encoder = train_utils().get_resnet("resnet18", weights= "r3m")
             self.image_encoder = train_utils().replace_bn_with_gn(self.image_encoder)
+        elif im_encoder == "viT":
+            self.image_encoder  = SimpleRGBObsEncoder()
 
+            # train_utils().replace_bn_with_gn(self.image_encoder)
         # Dynamically calculate the image_dim after convolution and pooling
         with torch.no_grad():
-            sample_input = torch.zeros(1, C, H, W)  # Batch size of 1
+            sample_input = None
+            if im_encoder == 'viT':
+                sample_input = torch.zeros(1, 2, C, H, W)  # Batch size of 1
+            else:
+                sample_input = torch.zeros(1, C, H, W) 
             sample_output = self.image_encoder(sample_input)
             image_dim = sample_output.shape[1]  # Get the flattened image dimension
 
@@ -109,7 +138,7 @@ class CrossAttentionFusion(nn.Module):
         self.image_fc = nn.Linear(image_dim, hidden_dim)
 
         # Force feature extraction
-        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True)
+        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True, im_encoder = im_encoder)
         # Cross-attention layers
         self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4)
 
@@ -123,11 +152,13 @@ class CrossAttentionFusion(nn.Module):
     def forward(self, image_input, force_input):
         # Encode image and force data
         current_batch_size = image_input.size(0)
-
+        if self.im_encoder == "viT":
+            image_input = cross_center_crop(image_input, 224, 224)
         image_features = self.image_encoder(image_input)
 
-        image_features = self.image_fc(image_features)
-        image_features = image_features.view(int(current_batch_size/2), self.obs_horizon, -1)
+        # image_features = self.image_fc(image_features)
+        if self.im_encoder != "viT":
+            image_features = image_features.view(int(current_batch_size/2), self.obs_horizon, -1)
 
         image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
 
@@ -403,9 +434,21 @@ class ConditionalUnet1D(nn.Module):
 #     id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
 #     gdown.download(id=id, output=dataset_path, quiet=False)
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/clock1_98_delta.zarr.zip"
+def get_filename(input_string):
+    # Find the last instance of '/'
+    last_slash_index = input_string.rfind('/')
+    
+    # Get the substring after the last '/'
+    if last_slash_index != -1:
+        result = input_string[last_slash_index + 1:]
+        # Return the substring without the last 4 characters
+        return result[:-10] if len(result) > 10 else ""
+    else:
+        return ""
 
-import timm
+
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D.zarr.zip"
+
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
     def __init__(self,
@@ -426,7 +469,7 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size = 82
+        batch_size = 25
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -438,36 +481,56 @@ class DiffusionPolicy_Real:
         # if you have multiple camera views, use seperate encoder weights for each view.
         # Resnet18 and resnet34 both have same dimension for the output
         # Define Second vision encoder
-        if encoder == "resnet":
-           print("")
-           vision_encoder = train_utils().get_resnet('resnet18')
-        elif encoder == "Transformer":
-            Transformer_bool = True
-            print("Imported Transformer clip model")
-            vision_encoder = timm.create_model('vit_base_patch16_clip_224.openai', pretrained=True)
+
         if not single_view:
             vision_encoder2 = train_utils().get_resnet('resnet18')
             vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
         if force_encode:
-            force_encoder = ForceEncoder(4, 512, batch_size = batch_size,
+            if encoder == "viT":
+                hidden_dim_force = 768
+            else:
+                hidden_dim_force = 512
+            force_encoder = ForceEncoder(4, hidden_dim_force, batch_size = batch_size,
                                           obs_horizon = obs_horizon, 
                                           force_encoder= force_encoder, 
                                           cross_attn=cross_attn)
 
         if cross_attn:
-            joint_encoder = CrossAttentionFusion((3, 320, 240), 4, 512, batch_size = batch_size, 
+            if encoder == "viT":
+                cross_hidden_dim = 768
+                image_dim = (3,224,224)
+            else:
+                cross_hidden_dim = 512
+                image_dim = (3,320,240)
+            joint_encoder = CrossAttentionFusion(image_dim, 4, cross_hidden_dim, batch_size = batch_size, 
                                                  obs_horizon=obs_horizon, 
                                                  force_encoder = force_encoder, 
-                                                 resnet= True)
+                                                 im_encoder = encoder)
+        else:
+            if encoder == "resnet":
+                print("resnet")
+                vision_encoder = train_utils().get_resnet('resnet18')
+                vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
+
+            elif encoder == "Transformer":
+                Transformer_bool = True
+                print("Imported Transformer clip model")
+                vision_encoder = SimpleRGBObsEncoder()
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
         # performance will tank if you forget to do this!
-        vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
         # ResNet18 has output dim of 512 X 2 because two views
         if single_view:
-            vision_feature_dim = 512
+            if encoder == "viT":
+                vision_feature_dim = 768
+            else:
+                vision_feature_dim = 512
         else:
-            vision_feature_dim = 512 + 512
+            if encoder == "viT":
+                vision_feature_dim = 768 + 512
+            else:
+                vision_feature_dim = 512 + 512
+
         if force_encode:
             force_feature_dim = 512
         else:
@@ -481,6 +544,8 @@ class DiffusionPolicy_Real:
             obs_dim = vision_feature_dim  + lowdim_obs_dim
         else:            
             obs_dim = vision_feature_dim + lowdim_obs_dim
+        
+        data_name = get_filename(dataset_path)
 
         if train:
             # create dataset from file
@@ -497,7 +562,7 @@ class DiffusionPolicy_Real:
             stats = dataset.stats
 
            # Save the stats to a file
-            with open(f'stats_clock_clean_{encoder}_{action_def}_{modality}.json', 'w') as f:
+            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
 
@@ -633,8 +698,8 @@ class DiffusionPolicy_Real:
         self.obs_dim = obs_dim
         if not single_view:
             self.vision_encoder2 = vision_encoder2
-
-        self.vision_encoder = vision_encoder
+        if not cross_attn:
+            self.vision_encoder = vision_encoder
         if force_encode:
             self.force_encoder = force_encoder
         self.noise_pred_net = noise_pred_net
@@ -642,8 +707,7 @@ class DiffusionPolicy_Real:
         self.pred_horizon = pred_horizon
         self.lowdim_obs_dim = lowdim_obs_dim
         self.action_dim = action_dim
-
-
+        self.data_name = data_name
 
 
 
@@ -865,27 +929,27 @@ def test():
     print("batch['agent_pos'].shape:", batch['agent_pos'].shape)    
     print("batch['force'].shape:", batch['force'].shape)
     print("batch['action'].shape", batch['action'].shape)
-    image_input_shape  = (3, 320, 240)
+    image_input_shape  = (3, 224, 224)
     force_dim = 4
-    hidden_dim = 512
+    hidden_dim = 768
 
     import torch.optim as optim
     device = torch.device('cuda')
     # Standard ADAM optimizer
     # Note that EMA parametesr are not optimized
-    model = CrossAttentionFusion(image_input_shape, force_dim, hidden_dim, batch_size = batch_size, obs_horizon=obs_horizon, force_encoder = "Transformer", resnet= True)
+    model = CrossAttentionFusion(image_input_shape, force_dim, hidden_dim, batch_size = batch_size, obs_horizon=obs_horizon, force_encoder = "Transformer", im_encoder= "viT")
     model = model.to(device)
     num_epochs = 10  # Set the number of epochs
     nimage = batch['image'][:,:2].to(device)
     nforce = batch['force'][:,:2].to(device)
     for epoch in range(num_epochs):
         # Example random input data for demonstration
-        image_input = nimage.flatten(end_dim=1).to(device)  # Batch of 8 images
-        force_input = nforce.flatten(end_dim=1).to(device)
+        # image_input = nimage.flatten(end_dim=1).to(device)  # Batch of 8 images
+        # force_input = nforce.flatten(end_dim=1).to(device)
         # Batch of 8 force vectors
 
         # Forward pass
-        latent_embedding = model(image_input, force_input)
+        latent_embedding = model(nimage, nforce)
 
 
         print(f'Epoch [{epoch+1}/{num_epochs}. {latent_embedding.shape}')

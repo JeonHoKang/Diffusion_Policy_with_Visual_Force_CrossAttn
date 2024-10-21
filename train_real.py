@@ -13,7 +13,7 @@ torch.cuda.empty_cache()
 import hydra
 from omegaconf import DictConfig
 
-@hydra.main(version_base=None, config_path="config", config_name="clock_clean_resnet_delta_with_force_single_view_force_Trans_crossattn")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_Trans_crossattn")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
@@ -46,7 +46,8 @@ def train_Real_Robot(cfg: DictConfig):
                                     force_encode=force_encode,
                                     force_encoder=force_encoder,
                                     cross_attn=cross_attn)
-    
+    data_name = diffusion.data_name
+
     device = torch.device('cuda')
     _ = diffusion.nets.to(device)
 
@@ -135,15 +136,19 @@ def train_Real_Robot(cfg: DictConfig):
                     #     # Show the plot
                     # plt.show()  
 
-
+                    if encoder == "resnet":
+                        image_input = nimage.flatten(end_dim=1)
+                    elif encoder == "viT":
+                        image_input = nimage
                     B = nagent_pos.shape[0]
                     if not cross_attn:
                         # encoder vision features
                         image_features = diffusion.nets['vision_encoder'](
-                            nimage.flatten(end_dim=1))
+                            image_input)
                         image_features = image_features.reshape(
                             *nimage.shape[:2],-1)
                     # (B,obs_horizon,D)
+
                     if not single_view:
                     # encoder vision features
                         image_features_second_view = diffusion.nets['vision_encoder2'](
@@ -152,15 +157,15 @@ def train_Real_Robot(cfg: DictConfig):
                             *nimage_second_view.shape[:2],-1)
                     
                     if force_mod and force_encode:
-                        force_feature = diffusion.nets['force_encoder'](nforce.flatten(end_dim=1))
-                        force_feature = force_feature.reshape(
-                            *nforce.shape[:2],-1)
+                        force_feature = diffusion.nets['force_encoder'](nforce)
+                        # force_feature = force_feature.reshape(
+                        #     *nforce.shape[:2],-1)
                     else:
                         force_feature = nforce
                     
                     if cross_attn:
                         joint_features = diffusion.nets['cross_attn_encoder'](
-                            nimage.flatten(end_dim=1), (nforce.flatten(end_dim=1)))
+                            image_input, (nforce))
 
                     # (B,obs_horizon,D)
                     if force_mod and single_view and not cross_attn:
@@ -226,7 +231,7 @@ def train_Real_Robot(cfg: DictConfig):
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == end_epoch:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_act_16_{epoch_idx+1}.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')

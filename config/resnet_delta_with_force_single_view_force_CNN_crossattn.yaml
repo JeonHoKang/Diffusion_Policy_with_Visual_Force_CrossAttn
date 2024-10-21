@@ -2,7 +2,7 @@
 defaults:
   - _self_
 
-name: clock_clean_resnet_delta_with_force_single_view_force_CNN_crossattn
+name: resnet_delta_with_force_single_view_force_CNN_crossattn
 
 model_config:
   continue_training: False
