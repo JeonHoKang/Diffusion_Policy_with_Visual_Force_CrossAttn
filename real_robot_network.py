@@ -78,8 +78,27 @@ class ForceEncoder(nn.Module):
             # Stack 6 layers of the Transformer Encoder Layer
             self.transformer_encoder = nn.TransformerEncoder(transformer_layer, num_layers=6)            
             self.fc = nn.Linear(force_hidden_dim, force_hidden_dim)  # Optional final projection layer
+        elif force_encoder == "MLP":
+            if im_encoder == "viT":
+                self.fc_encoder = nn.Sequential(
+                    nn.Linear(4, 64),   # 4 force components -> 64
+                    nn.ReLU(),
+                    nn.Linear(64, 128),
+                    nn.ReLU(),
+                    nn.Linear(128, 256),  # Output 512-dimensional feature
+                    nn.ReLU(),
+                    nn.Linear(256, 768)  # Output 512-dimensional feature
 
-            
+                )
+            else:
+                self.fc_encoder = nn.Sequential(
+                    nn.Linear(4, 64),   # 4 force components -> 64
+                    nn.ReLU(),
+                    nn.Linear(64, 128),
+                    nn.ReLU(),
+                    nn.Linear(128, 512)  # Output 512-dimensional feature
+                )
+                
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
@@ -91,8 +110,10 @@ class ForceEncoder(nn.Module):
             latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
         elif self.force_encoder == "Transformer":
             embedded_force = self.force_embedding(force_input)  # Shape: [seq_len, batch_size, 512]
-            latent_vector = self.transformer_encoder(embedded_force)  # Shape: [sequence_length, batch_size, embed_dim]
+            latent_vector = self.transformer_encoder(embedded_force)  # Shape: [batch_size, embed_dim]
             # latent_vector = self.fc(encoded_force.mean(dim=0))  # Get the final 512-dimensional output
+        elif self.force_encoder == "MLP":
+            latent_vector = self.fc_encoder(force_input)
         latent_vector = latent_vector.reshape(int(B), self.obs_horizon, -1)
         return latent_vector
     
@@ -469,7 +490,7 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size = 25
+        batch_size =64
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -937,7 +958,7 @@ def test():
     device = torch.device('cuda')
     # Standard ADAM optimizer
     # Note that EMA parametesr are not optimized
-    model = CrossAttentionFusion(image_input_shape, force_dim, hidden_dim, batch_size = batch_size, obs_horizon=obs_horizon, force_encoder = "Transformer", im_encoder= "viT")
+    model = CrossAttentionFusion(image_input_shape, force_dim, hidden_dim, batch_size = batch_size, obs_horizon=obs_horizon, force_encoder = "MLP", im_encoder= "viT")
     model = model.to(device)
     num_epochs = 10  # Set the number of epochs
     nimage = batch['image'][:,:2].to(device)

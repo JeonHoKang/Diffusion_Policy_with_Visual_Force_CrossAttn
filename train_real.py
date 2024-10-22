@@ -13,7 +13,7 @@ torch.cuda.empty_cache()
 import hydra
 from omegaconf import DictConfig
 
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_Trans_crossattn")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
