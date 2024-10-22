@@ -240,8 +240,16 @@ class EndEffectorPoseNode(Node):
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encode = False, cross_attn = False):
-        diffusion = DiffusionPolicy_Real(train=False, encoder = encoder, action_def = action_def, force_mod=force_mod, single_view= single_view, force_encode = force_encode, cross_attn = cross_attn)
+    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encoder = "CNN", force_encode = False, cross_attn = False):
+        print(f"force_encoder: {force_encoder}")
+        diffusion = DiffusionPolicy_Real(train=False, 
+                                        encoder = encoder, 
+                                        action_def = action_def, 
+                                        force_mod=force_mod,
+                                        single_view= single_view, 
+                                        force_encoder = force_encoder, 
+                                        force_encode = force_encode, 
+                                        cross_attn = cross_attn)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # agent_pos is 2 dimensional
@@ -429,7 +437,7 @@ class EvaluateRealRobot:
 
 
          ### Visualizing purposes
-        # import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt
         # plt.imshow(image_A_rgb)
         # plt.show()
         # plt.imshow(image_B_rgb)
@@ -589,8 +597,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_clock_clean_resnet_delta_with_force.pth"
-            #   ckpt_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints/pusht_vision_100ep.ckpt"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/clock_clean_resnet_delta_force_mod_single_veiw_force_encode_act_8_1800.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
@@ -683,12 +690,12 @@ class EvaluateRealRobot:
                 with torch.no_grad():
                     # get image features
                     if not self.single_view:
-                        image_features_second_view = ema_nets['vision_encoder'](nimages) # previously trained one vision_encoder 1
+                        image_features_second_view = ema_nets['vision_encoder2'](nimages) # previously trained one vision_encoder 1
                     # (2,512)
                     if not cross_attn:
-                        image_features = ema_nets['vision_encoder2'](nimages_second_view)
+                        image_features = ema_nets['vision_encoder'](nimages_second_view)
                     if force_encode and not cross_attn:
-                        force_feature = ema_nets['force_encoder2'](nforce_observation)
+                        force_feature = ema_nets['force_encoder'](nforce_observation)
                     elif not force_encode and cross_attn:
                         joint_features = ema_nets['cross_attn_encoder'](nimages_second_view, nforce_observation)
                     # concat with low-dim observations
@@ -701,9 +708,9 @@ class EvaluateRealRobot:
                     elif not force_mod and not single_view:
                         obs_features = torch.cat([image_features_second_view, image_features, nagent_poses], dim=-1)
                     elif single_view and cross_attn:
-                        obs_features = torch.cat([joint_features[0] , nagent_poses], dim=-1)
+                        obs_features = torch.cat([joint_features , nagent_poses], dim=-1)
                     elif not single_view and cross_attn:
-                        obs_features = torch.cat([joint_features[0], image_features_second_view, nagent_poses], dim=-1)
+                        obs_features = torch.cat([joint_features, image_features_second_view, nagent_poses], dim=-1)
                     else:
                         print("Check your configuration for training")
 
@@ -804,16 +811,16 @@ class EvaluateRealRobot:
         plt.tight_layout()
         plt.show()
 
-@hydra.main(version_base=None, config_path="config", config_name="clock_clean_resnet_delta_force_mod_dual_view_force_mod_no_encode")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_force_mod_single_view_force_encode")
 def main(cfg: DictConfig):
     # Max steps will dicate how long the inference duration is going to be so it is very important
     # Initialize RealSense pipelines for both cameras
     rclpy.init()
     try:  
-        max_steps = 200
+        max_steps = 100
         # Evaluate Real Robot Environment
         print(f"inference on {cfg.name}")
-        eval_real_robot = EvaluateRealRobot(max_steps= max_steps, action_def = cfg.model_config.action_def, encoder = cfg.model_config.encoder, force_mod=cfg.model_config.force_mod, single_view= cfg.model_config.single_view, force_encode = cfg.model_config.force_encode, cross_attn = cfg.model_config.cross_attn)
+        eval_real_robot = EvaluateRealRobot(max_steps= max_steps, action_def = cfg.model_config.action_def, encoder = cfg.model_config.encoder, force_encoder = cfg.model_config.force_encoder, force_mod=cfg.model_config.force_mod, single_view= cfg.model_config.single_view, force_encode = cfg.model_config.force_encode, cross_attn = cfg.model_config.cross_attn)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape
