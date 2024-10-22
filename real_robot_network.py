@@ -47,12 +47,13 @@ def cross_center_crop(images, crop_height, crop_width):
     return cropped_images
 
 class ForceEncoder(nn.Module):
-    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, force_encoder = "CNN", cross_attn = False, im_encoder = "resnet"):
+    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, force_encoder = "CNN", cross_attn = False, im_encoder = "resnet", train = True):
         super(ForceEncoder, self).__init__()
         self.cross_attn = cross_attn
         self.batch_size = batch_size
         self.obs_horizon = obs_horizon
         self.force_encoder = force_encoder
+        self.train = train
         if im_encoder == "viT":
             force_hidden_dim = 768
         else:
@@ -102,9 +103,12 @@ class ForceEncoder(nn.Module):
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
-        B,T,D = x.shape
-        force_input = x.reshape(B*T, D)
-        force_input = force_input.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
+        if self.train:
+            B,T,D = x.shape
+            force_input = x.reshape(B*T, D)
+            force_input = force_input.unsqueeze(1)
+        else:
+            force_input = x.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
         if self.force_encoder == "CNN":
             latent_vector = self.conv_encoder(force_input)
             latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
@@ -114,16 +118,18 @@ class ForceEncoder(nn.Module):
             # latent_vector = self.fc(encoded_force.mean(dim=0))  # Get the final 512-dimensional output
         elif self.force_encoder == "MLP":
             latent_vector = self.fc_encoder(force_input)
-        latent_vector = latent_vector.reshape(int(B), self.obs_horizon, -1)
+        if self.train:
+            latent_vector = latent_vector.reshape(int(B), self.obs_horizon, -1)
         return latent_vector
     
 class CrossAttentionFusion(nn.Module):
-    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, force_encoder = "CNN", im_encoder = "resnet"):
+    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, force_encoder = "CNN", im_encoder = "resnet", train=True):
         super(CrossAttentionFusion, self).__init__()
         self.obs_horizon = obs_horizon
         self.batch_size = batch_size
         self.im_encoder = im_encoder
         C,H,W = image_dim
+        self.train = train
         # Image feature extraction
         # Image feature extraction layers
         if im_encoder == "CNN":
@@ -159,7 +165,7 @@ class CrossAttentionFusion(nn.Module):
         self.image_fc = nn.Linear(image_dim, hidden_dim)
 
         # Force feature extraction
-        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True, im_encoder = im_encoder)
+        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True, im_encoder = im_encoder, train = train)
         # Cross-attention layers
         self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4)
 
@@ -178,22 +184,23 @@ class CrossAttentionFusion(nn.Module):
         image_features = self.image_encoder(image_input)
 
         # image_features = self.image_fc(image_features)
-        if self.im_encoder != "viT":
+        if self.im_encoder != "viT" and self.train:
             image_features = image_features.view(int(current_batch_size/2), self.obs_horizon, -1)
-
-        image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
+        if self.train:
+            image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
 
         # Reshape for attention: (sequence_length, batch_size, hidden_dim)
 
         force_features = self.force_encoder(force_input)
-
-        # force_features = force_features.view(batch_size, obs_horizon, -1)
-        force_features = force_features.permute(1, 0, 2)  # Correct shape: (num_forces, batch_size, hidden_dim)
+        if self.train:
+            # force_features = force_features.view(batch_size, obs_horizon, -1)
+            force_features = force_features.permute(1, 0, 2)  # Correct shape: (num_forces, batch_size, hidden_dim)
 
 
         # Cross-attention operation
         attn_output, _ = self.attention(query=force_features, key=image_features, value=image_features)
-        attn_output = attn_output.permute(1, 0, 2)  # Shape: (batch_size, num_forces, hidden_dim)
+        if self.train:
+            attn_output = attn_output.permute(1, 0, 2)  # Shape: (batch_size, num_forces, hidden_dim)
 
         # Generate the fused embedding
         joint_embedding = self.fusion_layer(attn_output)
@@ -514,7 +521,8 @@ class DiffusionPolicy_Real:
             force_encoder = ForceEncoder(4, hidden_dim_force, batch_size = batch_size,
                                           obs_horizon = obs_horizon, 
                                           force_encoder= force_encoder, 
-                                          cross_attn=cross_attn)
+                                          cross_attn=cross_attn,
+                                          train=train)
 
         if cross_attn:
             if encoder == "viT":
@@ -526,7 +534,8 @@ class DiffusionPolicy_Real:
             joint_encoder = CrossAttentionFusion(image_dim, 4, cross_hidden_dim, batch_size = batch_size, 
                                                  obs_horizon=obs_horizon, 
                                                  force_encoder = force_encoder, 
-                                                 im_encoder = encoder)
+                                                 im_encoder = encoder,
+                                                 train = train)
         else:
             if encoder == "resnet":
                 print("resnet")
