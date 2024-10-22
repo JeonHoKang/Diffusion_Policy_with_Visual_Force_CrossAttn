@@ -139,7 +139,7 @@ class CrossAttentionFusion(nn.Module):
                 nn.Flatten()
             )
         elif im_encoder == "resnet":
-            self.image_encoder = train_utils().get_resnet("resnet18", weights= "r3m")
+            self.image_encoder = train_utils().get_resnet("resnet18", weights= None)
             self.image_encoder = train_utils().replace_bn_with_gn(self.image_encoder)
         elif im_encoder == "viT":
             self.image_encoder  = SimpleRGBObsEncoder()
