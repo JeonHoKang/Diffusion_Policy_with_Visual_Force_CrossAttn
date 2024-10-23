@@ -470,7 +470,7 @@ def get_filename(input_string):
     if last_slash_index != -1:
         result = input_string[last_slash_index + 1:]
         # Return the substring without the last 4 characters
-        return result[:-10] if len(result) > 10 else ""
+        return result[:-9] if len(result) > 9 else ""
     else:
         return ""
 
