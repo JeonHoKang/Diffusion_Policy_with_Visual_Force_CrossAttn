@@ -89,7 +89,6 @@ class ForceEncoder(nn.Module):
                     nn.Linear(128, 256),  # Output 512-dimensional feature
                     nn.ReLU(),
                     nn.Linear(256, 768)  # Output 512-dimensional feature
-
                 )
             else:
                 self.fc_encoder = nn.Sequential(
@@ -120,6 +119,8 @@ class ForceEncoder(nn.Module):
             latent_vector = self.fc_encoder(force_input)
         if self.train:
             latent_vector = latent_vector.reshape(int(B), self.obs_horizon, -1)
+        else:
+            latent_vector = latent_vector.squeeze(1)
         return latent_vector
     
 class CrossAttentionFusion(nn.Module):

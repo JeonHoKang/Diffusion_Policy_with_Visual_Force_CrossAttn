@@ -597,7 +597,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_clock_clean_resnet_delta_with_force.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_RAL_AAA+_1500.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
@@ -630,7 +630,7 @@ class EvaluateRealRobot:
         force_mod = self.force_mod
         force_encode = self.force_encode
         cross_attn = self.cross_attn
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_clock_clean_resnet_delta_with_force.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_RAL_AAA+_resnet_delta_with_force.json', 'r') as f:
             stats = json.load(f)
             if force_mod:
                 stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -690,10 +690,10 @@ class EvaluateRealRobot:
                 with torch.no_grad():
                     # get image features
                     if not self.single_view:
-                        image_features_second_view = ema_nets['vision_encoder'](nimages) # previously trained one vision_encoder 1
+                        image_features_second_view = ema_nets['vision_encoder2'](nimages) # previously trained one vision_encoder 1
                     # (2,512)
                     if not cross_attn:
-                        image_features = ema_nets['vision_encoder2'](nimages_second_view)
+                        image_features = ema_nets['vision_encoder'](nimages_second_view)
                     if force_encode and not cross_attn:
                         force_feature = ema_nets['force_encoder'](nforce_observation)
                     elif not force_encode and cross_attn:
@@ -749,8 +749,8 @@ class EvaluateRealRobot:
       
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon
-                action = action_pred[start:end,:]
+                end = start + diffusion.action_horizon -3
+                action = action_pred[start:end,:] 
             # (action_horizon, action_dim)
     
                 # execute action_horizon number of steps
@@ -811,7 +811,7 @@ class EvaluateRealRobot:
         plt.tight_layout()
         plt.show()
 
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_force_mod_dual_view_force_mod_no_encode")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn")
 def main(cfg: DictConfig):
     # Max steps will dicate how long the inference duration is going to be so it is very important
     # Initialize RealSense pipelines for both cameras
