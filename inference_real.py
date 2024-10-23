@@ -597,7 +597,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/clock_clean_resnet_delta_force_mod_single_veiw_force_encode_act_8_1800.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/checkpoint_1800_clock_clean_resnet_delta_with_force.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
@@ -690,10 +690,10 @@ class EvaluateRealRobot:
                 with torch.no_grad():
                     # get image features
                     if not self.single_view:
-                        image_features_second_view = ema_nets['vision_encoder2'](nimages) # previously trained one vision_encoder 1
+                        image_features_second_view = ema_nets['vision_encoder'](nimages) # previously trained one vision_encoder 1
                     # (2,512)
                     if not cross_attn:
-                        image_features = ema_nets['vision_encoder'](nimages_second_view)
+                        image_features = ema_nets['vision_encoder2'](nimages_second_view)
                     if force_encode and not cross_attn:
                         force_feature = ema_nets['force_encoder'](nforce_observation)
                     elif not force_encode and cross_attn:
@@ -811,7 +811,7 @@ class EvaluateRealRobot:
         plt.tight_layout()
         plt.show()
 
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_force_mod_single_view_force_encode")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_force_mod_dual_view_force_mod_no_encode")
 def main(cfg: DictConfig):
     # Max steps will dicate how long the inference duration is going to be so it is very important
     # Initialize RealSense pipelines for both cameras
