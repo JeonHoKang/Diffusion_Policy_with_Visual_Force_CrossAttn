@@ -2,16 +2,17 @@
 defaults:
   - _self_
 
-name: viT_delta_with_force_single_view_force_MLP_crossattn
+name: resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid
 
 model_config:
   continue_training: False
   start_epoch: 0
   end_epoch: 3000
-  encoder: "viT"
+  encoder: "resnet"
   action_def: "delta"
   force_mod: True
   single_view: True
   force_encode: False
   force_encoder: "MLP"
   cross_attn: True
+  hybrid: True

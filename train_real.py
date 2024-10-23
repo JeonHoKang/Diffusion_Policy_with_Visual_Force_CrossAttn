@@ -13,7 +13,7 @@ torch.cuda.empty_cache()
 import hydra
 from omegaconf import DictConfig
 
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
@@ -25,7 +25,7 @@ def train_Real_Robot(cfg: DictConfig):
     force_encode = cfg.model_config.force_encode
     force_encoder = cfg.model_config.force_encoder
     cross_attn = cfg.model_config.cross_attn
-
+    hybrid = cfg.model_config.hybrid
     if force_encode:
         cross_attn = False
     if cross_attn:
@@ -33,19 +33,14 @@ def train_Real_Robot(cfg: DictConfig):
 
     print(f"Training model with vision {cfg.name}")
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
-    modality = "without_force"
-    view = "dual_view"
-    if force_mod:
-        modality = "with_force"
-    if single_view:
-        view = "single_view"
     diffusion = DiffusionPolicy_Real(encoder= encoder,
                                     action_def = action_def, 
                                     force_mod = force_mod, 
                                     single_view= single_view, 
                                     force_encode=force_encode,
                                     force_encoder=force_encoder,
-                                    cross_attn=cross_attn)
+                                    cross_attn=cross_attn,
+                                    hybrid = hybrid)
     data_name = diffusion.data_name
 
     device = torch.device('cuda')
@@ -177,12 +172,20 @@ def train_Real_Robot(cfg: DictConfig):
                     elif not force_mod and not single_view:
                         obs_features = torch.cat([image_features, image_features_second_view , nagent_pos], dim=-1)
                     elif single_view and cross_attn:
-                        obs_features = torch.cat([joint_features , nagent_pos], dim=-1)
+                        # TODO: If hybrid is true, then add force feature on top of it.
+                        if hybrid:
+                            obs_features = torch.cat([joint_features, force_feature, nagent_pos], dim=-1)
+                        else:
+                            obs_features = torch.cat([joint_features, nagent_pos], dim=-1)
                     elif not single_view and cross_attn:
-                        obs_features = torch.cat([joint_features, image_features_second_view, nagent_pos], dim=-1)
+                        # TODO: If hybrid is true, then add force feature on top of it.
+                        if hybrid:
+                            obs_features = torch.cat([joint_features, image_features_second_view, force_feature, nagent_pos], dim=-1)
+                        else:
+                            obs_features = torch.cat([joint_features, image_features_second_view, nagent_pos], dim=-1)
                     else:
                         print("Check your configuration for training")
-                    
+
                     obs_cond = obs_features.flatten(start_dim=1)
                     # (B, obs_horizon * obs_dim)
 
