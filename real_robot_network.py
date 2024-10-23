@@ -487,7 +487,8 @@ class DiffusionPolicy_Real:
                 single_view:bool = False, 
                 force_encode = False,
                 force_encoder = "CNN",
-                cross_attn: bool = False):
+                cross_attn: bool = False,
+                hybrid: bool = False):
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
         # parameters
@@ -574,7 +575,9 @@ class DiffusionPolicy_Real:
             obs_dim = vision_feature_dim  + lowdim_obs_dim
         else:            
             obs_dim = vision_feature_dim + lowdim_obs_dim
-        
+        if hybrid:
+            obs_dim += 4
+            
         data_name = get_filename(dataset_path)
 
         if train:
