@@ -347,8 +347,9 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             # discard unused observations
             if self.augment:
                 noise_std = 0.00005
-                force_tensor = nsample['force'][:self.obs_horizon, :]
-                force_augmented = force_tensor + np.random.normal(0, noise_std, size=force_tensor.shape)
+                force_arr = nsample['force'][:self.obs_horizon, :]
+                scaling_factors = np.random.uniform(0.9, 1.2)
+                force_augmented = force_arr * scaling_factors + np.random.normal(0, noise_std, size=force_arr.shape)
                 nsample['force'] = force_augmented.astype(np.float32)
             else:
                 nsample['force'] = nsample['force'][:self.obs_horizon,:]
