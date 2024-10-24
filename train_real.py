@@ -88,8 +88,19 @@ def train_Real_Robot(cfg: DictConfig):
         # epoch loop
         for epoch_idx in tglobal:
             epoch_loss = list()
+            ### THis is for seperately training augmented and non augmented data
+            # # Decide which data loader to use for this epoch
+            # if epoch_idx % 2 == 0:
+            #     # Use normal data loader every other epoch
+            #     current_loader = diffusion.data_loader
+            #     tglobal.set_postfix({'Data': 'Normal'})
+            # else:
+            #     # Use augmented data loader on alternate epochs
+            #     current_loader = diffusion.data_loader_augmented
+            #     tglobal.set_postfix({'Data': 'Augmented'})
+            current_loader = diffusion.dataloader
             # batch loop
-            with tqdm(diffusion.dataloader, desc='Batch', leave=False) as tepoch:
+            with tqdm(current_loader, desc='Batch', leave=False) as tepoch:
                 for nbatch in tepoch:
                     # data normalized in dataset
                     # device transfer
@@ -104,12 +115,13 @@ def train_Real_Robot(cfg: DictConfig):
                     nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
                     naction = nbatch['action'].to(device)
                     
-                    ### Debug sequential data structure. It shoud be consecutive
+                    ## Debug sequential data structure. It shoud be consecutive
                     # import matplotlib.pyplot as plt
                     # imdata1 = nimage[0].cpu()
                     # imdata1 = imdata1.numpy()
-                    # imdata2 = nimage_second_view[0].cpu()
-                    # imdata2 = imdata2.numpy()
+                    # print(f"shape of the image data:", imdata1.shape)
+                    # # imdata2 = nimage_second_view[0].cpu()
+                    # # imdata2 = imdata2.numpy()
           
                     # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
                     # for j in range(2):
@@ -121,9 +133,10 @@ def train_Real_Robot(cfg: DictConfig):
                     #     axes[j].axis('off')  # Hide the axes
                     #     # Show the plot
                     # plt.show()  
+                    ### For double realsense config only
                     # for j in range(2):
                     #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                    #     img2 = imdata2[j].transpose(1, 2, 0)
+                    #     # img2 = imdata2[j].transpose(1, 2, 0)
 
                     #     # Plot the image on the corresponding subplot
                     #     axes[j].imshow(img2)
@@ -145,7 +158,7 @@ def train_Real_Robot(cfg: DictConfig):
                     # (B,obs_horizon,D)
 
                     if not single_view:
-                    # encoder vision features
+                        # encoder vision features
                         image_features_second_view = diffusion.nets['vision_encoder2'](
                             nimage_second_view.flatten(end_dim=1))
                         image_features_second_view = image_features_second_view.reshape(
@@ -234,7 +247,7 @@ def train_Real_Robot(cfg: DictConfig):
             # Save checkpoint every 10 epochs or at the end of training
             if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == end_epoch:
                 # Save only the state_dict of the model, including relevant submodules
-                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}.pth'))
+                torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_aug.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')
