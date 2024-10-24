@@ -240,7 +240,7 @@ class EndEffectorPoseNode(Node):
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encoder = "CNN", force_encode = False, cross_attn = False):
+    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encoder = "CNN", force_encode = False, cross_attn = False, hybrid = False):
         print(f"force_encoder: {force_encoder}")
         diffusion = DiffusionPolicy_Real(train=False, 
                                         encoder = encoder, 
@@ -249,7 +249,8 @@ class EvaluateRealRobot:
                                         single_view= single_view, 
                                         force_encoder = force_encoder, 
                                         force_encode = force_encode, 
-                                        cross_attn = cross_attn)
+                                        cross_attn = cross_attn,
+                                        hybrid = hybrid)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # agent_pos is 2 dimensional
@@ -338,7 +339,7 @@ class EvaluateRealRobot:
         time.sleep(4)
         self.force_mod = force_mod
         self.single_view = single_view
-
+        self.hybrid = hybrid
         obs = self.get_observation()
          # keep a queue of last 2 steps of observations
         obs_deque = collections.deque(
@@ -440,8 +441,8 @@ class EvaluateRealRobot:
         import matplotlib.pyplot as plt
         # plt.imshow(image_A_rgb)
         # plt.show()
-        # plt.imshow(image_B_rgb)
-        # plt.show()
+        plt.imshow(image_B_rgb)
+        plt.show()
         print(f'current agent position, {agent_pos}')
         agent_position = agent_pos[:3]
         agent_rotation = agent_pos[3:]
@@ -597,7 +598,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_RAL_AAA+_1500.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_RAL_AAA+D_2500.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
@@ -708,9 +709,15 @@ class EvaluateRealRobot:
                     elif not force_mod and not single_view:
                         obs_features = torch.cat([image_features_second_view, image_features, nagent_poses], dim=-1)
                     elif single_view and cross_attn:
-                        obs_features = torch.cat([joint_features , nagent_poses], dim=-1)
+                        if self.hybrid:
+                            obs_features = torch.cat([joint_features ,nforce_observation, nagent_poses], dim=-1)
+                        else:
+                            obs_features = torch.cat([joint_features , nagent_poses], dim=-1)
                     elif not single_view and cross_attn:
-                        obs_features = torch.cat([joint_features, image_features_second_view, nagent_poses], dim=-1)
+                        if self.hybrid:
+                            obs_features = torch.cat([joint_features, image_features_second_view, nforce_observation, nagent_poses], dim=-1)
+                        else:
+                            obs_features = torch.cat([joint_features, image_features_second_view, nagent_poses], dim=-1)
                     else:
                         print("Check your configuration for training")
 
@@ -749,7 +756,7 @@ class EvaluateRealRobot:
       
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon -3
+                end = start + diffusion.action_horizon
                 action = action_pred[start:end,:] 
             # (action_horizon, action_dim)
     
@@ -811,7 +818,7 @@ class EvaluateRealRobot:
         plt.tight_layout()
         plt.show()
 
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid")
 def main(cfg: DictConfig):
     # Max steps will dicate how long the inference duration is going to be so it is very important
     # Initialize RealSense pipelines for both cameras
@@ -820,7 +827,7 @@ def main(cfg: DictConfig):
         max_steps = 100
         # Evaluate Real Robot Environment
         print(f"inference on {cfg.name}")
-        eval_real_robot = EvaluateRealRobot(max_steps= max_steps, action_def = cfg.model_config.action_def, encoder = cfg.model_config.encoder, force_encoder = cfg.model_config.force_encoder, force_mod=cfg.model_config.force_mod, single_view= cfg.model_config.single_view, force_encode = cfg.model_config.force_encode, cross_attn = cfg.model_config.cross_attn)
+        eval_real_robot = EvaluateRealRobot(max_steps= max_steps, action_def = cfg.model_config.action_def, encoder = cfg.model_config.encoder, force_encoder = cfg.model_config.force_encoder, force_mod=cfg.model_config.force_mod, single_view= cfg.model_config.single_view, force_encode = cfg.model_config.force_encode, cross_attn = cfg.model_config.cross_attn, hybrid = cfg.model_config.cross_attn)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape

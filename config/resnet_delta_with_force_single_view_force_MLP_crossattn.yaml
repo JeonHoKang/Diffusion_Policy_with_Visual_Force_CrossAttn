@@ -2,7 +2,7 @@
 defaults:
   - _self_
 
-name: resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid
+name: resnet_delta_with_force_single_view_force_MLP_crossattn
 
 model_config:
   continue_training: False
