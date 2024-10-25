@@ -441,8 +441,8 @@ class EvaluateRealRobot:
         import matplotlib.pyplot as plt
         # plt.imshow(image_A_rgb)
         # plt.show()
-        plt.imshow(image_B_rgb)
-        plt.show()
+        # plt.imshow(image_B_rgb)
+        # plt.show()
         print(f'current agent position, {agent_pos}')
         agent_position = agent_pos[:3]
         agent_rotation = agent_pos[3:]
@@ -598,7 +598,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_RAL_AAA+D_2500.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_RAL_AAA+D_1800_aug.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
