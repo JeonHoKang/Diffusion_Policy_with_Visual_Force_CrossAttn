@@ -99,7 +99,9 @@ class ForceEncoder(nn.Module):
                     nn.ReLU(),
                     nn.Linear(128, 512)  # Output 512-dimensional feature
                 )
-                
+        elif force_encoder == "Linear":
+            self.force_projection = nn.Linear(4, 512)
+
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
@@ -118,6 +120,9 @@ class ForceEncoder(nn.Module):
             # latent_vector = self.fc(encoded_force.mean(dim=0))  # Get the final 512-dimensional output
         elif self.force_encoder == "MLP":
             latent_vector = self.fc_encoder(force_input)
+        elif self.force_encoder == "Linear":
+            projected_force = self.force_projection(force_input)
+            latent_vector = projected_force
         if self.train:
             latent_vector = latent_vector.reshape(int(B), self.obs_horizon, -1)
         else:
@@ -166,7 +171,7 @@ class CrossAttentionFusion(nn.Module):
         # Fully connected layer to map the image features to hidden_dim
         self.image_fc = nn.Linear(image_dim, hidden_dim)
 
-        # Force feature extraction
+            # Force feature extraction
         self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True, im_encoder = im_encoder, train = train)
         # Cross-attention layers
         self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4)
@@ -472,12 +477,12 @@ def get_filename(input_string):
     if last_slash_index != -1:
         result = input_string[last_slash_index + 1:]
         # Return the substring without the last 4 characters
-        return result[:-9] if len(result) > 9 else ""
+        return result[:-7] if len(result) > 7 else ""
     else:
         return ""
 
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+AA_350.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -500,7 +505,7 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size =64
+        batch_size =82
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
