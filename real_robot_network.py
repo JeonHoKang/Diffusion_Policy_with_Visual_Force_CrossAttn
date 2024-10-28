@@ -152,7 +152,7 @@ class CrossAttentionFusion(nn.Module):
                 nn.Flatten()
             )
         elif im_encoder == "resnet":
-            self.image_encoder = train_utils().get_resnet("resnet18", weights= None)
+            self.image_encoder = train_utils().get_resnet("resnet34", weights= None)
             self.image_encoder = train_utils().replace_bn_with_gn(self.image_encoder)
         elif im_encoder == "viT":
             self.image_encoder  = SimpleRGBObsEncoder()
@@ -482,7 +482,7 @@ def get_filename(input_string):
         return ""
 
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+AA_350.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D_223.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -495,7 +495,8 @@ class DiffusionPolicy_Real:
                 force_encode = False,
                 force_encoder = "CNN",
                 cross_attn: bool = False,
-                hybrid: bool = False):
+                hybrid: bool = False,
+                crop: int = 1000):
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
         # parameters
@@ -505,7 +506,7 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size =82
+        batch_size =100
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -538,7 +539,10 @@ class DiffusionPolicy_Real:
                 image_dim = (3,224,224)
             else:
                 cross_hidden_dim = 512
-                image_dim = (3,320,240)
+                if crop == 98:
+                    image_dim = (3,98,98)
+                else:
+                    image_dim = (3,320,240)
             joint_encoder = CrossAttentionFusion(image_dim, 4, cross_hidden_dim, batch_size = batch_size, 
                                                  obs_horizon=obs_horizon, 
                                                  force_encoder = force_encoder, 
@@ -547,7 +551,7 @@ class DiffusionPolicy_Real:
         else:
             if encoder == "resnet":
                 print("resnet")
-                vision_encoder = train_utils().get_resnet('resnet18')
+                vision_encoder = train_utils().get_resnet('resnet34')
                 vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
 
             elif encoder == "Transformer":
@@ -597,39 +601,36 @@ class DiffusionPolicy_Real:
                 Transformer= Transformer_bool,
                 force_mod = force_mod,
                 single_view=single_view,
-                augment = False
+                augment = False,
+                crop = crop
             )
             # save training data statistics (min, max) for each dim
-            stats = dataset.stats
 
-           # Save the stats to a file
-            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}.json', 'w') as f:
-                json.dump(stats, f, cls=NumpyEncoder)
-                print("stats saved")
+
 
             # create dataloader
-            # dataloader = torch.utils.data.DataLoader(
-            #     dataset,
-            #     batch_size=batch_size,
-            #     num_workers=4,
-            #     shuffle=True,
-            #     # accelerate cpu-gpu transfer
-            #     pin_memory=True,
-            #     # don't kill worker process afte each epoch
-            #     persistent_workers=True,
-            # )
-
-            # TODO: I have to make it apply to only image space
-            dataset_augmented = RealRobotDataSet(
-                dataset_path=dataset_path,
-                pred_horizon=pred_horizon,
-                obs_horizon=obs_horizon,
-                action_horizon=action_horizon,
-                Transformer= Transformer_bool,
-                force_mod = force_mod,
-                single_view=single_view,
-                augment = True
+            dataloader = torch.utils.data.DataLoader(
+                dataset,
+                batch_size=batch_size,
+                num_workers=4,
+                shuffle=True,
+                # accelerate cpu-gpu transfer
+                pin_memory=True,
+                # don't kill worker process afte each epoch
+                persistent_workers=True,
             )
+
+            # dataset_augmented = RealRobotDataSet(
+            #     dataset_path=dataset_path,
+            #     pred_horizon=pred_horizon,
+            #     obs_horizon=obs_horizon,
+            #     action_horizon=action_horizon,
+            #     Transformer= Transformer_bool,
+            #     force_mod = force_mod,
+            #     single_view=single_view,
+            #     augment = True,
+            #     crop = crop
+            # )
 
             # data_loader_augmented = torch.utils.data.DataLoader(
             #     dataset_augmented,
@@ -641,17 +642,25 @@ class DiffusionPolicy_Real:
             #     # don't kill worker process afte each epoch
             #     persistent_workers=True,
             # )
-            combined_dataset = ConcatDataset([dataset, dataset_augmented])
-            # DataLoader for combined dataset
-            data_loader_combined = torch.utils.data.DataLoader(
-                combined_dataset,
-                batch_size=batch_size,
-                num_workers=4,
-                shuffle=True,  # Shuffle to mix normal and augmented data
-                pin_memory=True,
-                persistent_workers=True
-            )
-            self.dataloader = data_loader_combined
+            # combined_dataset = ConcatDataset([dataset, dataset_augmented])
+            
+            # # DataLoader for combined dataset
+            # data_loader_combined = torch.utils.data.DataLoader(
+            #     combined_dataset,
+            #     batch_size=batch_size,
+            #     num_workers=4,
+            #     shuffle=True,  # Shuffle to mix normal and augmented data
+            #     pin_memory=True,
+            #     persistent_workers=True
+            # )
+
+           # Save the stats to a file
+            stats = dataset.stats
+            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}.json', 'w') as f:
+                json.dump(stats, f, cls=NumpyEncoder)
+                print("stats saved")
+
+            self.dataloader = dataloader
             # self.dataloader = data_loader_augmented
             # self.data_loader_augmented = data_loader_augmented
             self.stats = stats
@@ -686,7 +695,7 @@ class DiffusionPolicy_Real:
         #     print("The images are different.")
         ######### End ########
             # visualize data in batch
-            batch = next(iter(data_loader_combined))
+            batch = next(iter(dataloader))
             print("batch['image'].shape:", batch['image'].shape)
             if not single_view:
                 print("batch[image2].shape", batch["image2"].shape)

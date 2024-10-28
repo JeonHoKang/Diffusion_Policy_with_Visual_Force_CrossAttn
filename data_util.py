@@ -130,10 +130,11 @@ def center_crop(images, crop_height, crop_width):
     N, C, H, W = images.shape
     assert crop_height <= H and crop_width <= W, "Crop size should be smaller than the original size"
     
-    # Calculate the center
-    start_y = (H - crop_height) // 2
-    start_x = (W - crop_width) // 2
-    
+    # Calculate the center + 20 only when using 98 and 124 is -20 for start_x only
+    start_y = (H - crop_height + 20) // 2
+    start_x = (W - crop_width - 20) // 2
+    # start_y = (H - crop_height) // 2
+    # start_x = (W - crop_width - 20) // 2  
     # Perform cropping
     cropped_images = images[:, :, start_y:start_y + crop_height, start_x:start_x + crop_width]
     
@@ -225,7 +226,8 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                  Transformer: bool = False,
                  force_mod: bool = False,
                  single_view: bool = False,
-                 augment: bool = False):
+                 augment: bool = False,
+                 crop: int = 1000):
         
         # read from zarr dataset
         dataset_root = zarr.open(dataset_path, 'r')
@@ -242,6 +244,11 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         if Transformer:
             print("center crop transformer")
             train_image_data = center_crop(train_image_data, 224, 224)
+        elif crop ==  98:
+            # If crop parameter 64
+            train_image_data = center_crop(train_image_data, crop, crop)
+        else:
+            ("No Cropping")
 
         # (N,3,96,96)
         # (N, D)
@@ -296,11 +303,18 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         self.force_mod = force_mod
         self.single_view = single_view
         self.augment = augment
+        self.crop = crop
         if self.augment:
-            self.augmentation_transform = transforms.Compose([
-                transforms.RandomResizedCrop(size=(240, 320), scale=(0.5, 2.0)),
-                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.3),
-            ])
+            if self.crop == 98:
+                self.augmentation_transform = transforms.Compose([
+                    transforms.RandomResizedCrop(size=(crop, crop), scale=(0.5, 1.5)),
+                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.2),
+                ])
+            else:
+                self.augmentation_transform = transforms.Compose([
+                    transforms.RandomResizedCrop(size=(240, 320), scale=(0.5, 1.5)),
+                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.2),
+                ])
 
     def __len__(self):
         return len(self.indices)

@@ -13,7 +13,8 @@ torch.cuda.empty_cache()
 import hydra
 from omegaconf import DictConfig
 
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid")
+# Make sure Crop is all there
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
@@ -26,6 +27,8 @@ def train_Real_Robot(cfg: DictConfig):
     force_encoder = cfg.model_config.force_encoder
     cross_attn = cfg.model_config.cross_attn
     hybrid = cfg.model_config.hybrid
+    crop = cfg.model_config.crop
+
     if force_encode:
         cross_attn = False
     if cross_attn:
@@ -40,7 +43,8 @@ def train_Real_Robot(cfg: DictConfig):
                                     force_encode=force_encode,
                                     force_encoder=force_encoder,
                                     cross_attn=cross_attn,
-                                    hybrid = hybrid)
+                                    hybrid = hybrid,
+                                    crop = crop)
     data_name = diffusion.data_name
 
     device = torch.device('cuda')
@@ -85,7 +89,7 @@ def train_Real_Robot(cfg: DictConfig):
     epoch_losses = []
 
     with tqdm(range(start_epoch, end_epoch), desc='Epoch') as tglobal:
-        # epoch loop
+        # epoch loopqqqqqqqqqqqqq
         for epoch_idx in tglobal:
             epoch_loss = list()
             ### THis is for seperately training augmented and non augmented data
@@ -128,7 +132,7 @@ def train_Real_Robot(cfg: DictConfig):
                     #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
                     #     img = imdata1[j].transpose(1, 2, 0)
 
-                    #     # Plot the image on the corresponding subplot
+                    # #     # Plot the image on the corresponding subplot
                     #     axes[j].imshow(img)
                     #     axes[j].axis('off')  # Hide the axes
                     #     # Show the plot
@@ -245,10 +249,10 @@ def train_Real_Robot(cfg: DictConfig):
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
-            if epoch_idx > 1000:
+            if epoch_idx > 950:
                 if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == end_epoch:
                     # Save only the state_dict of the model, including relevant submodules
-                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_aug.pth'))
+                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_noaug_crop98.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')

@@ -2,12 +2,12 @@
 defaults:
   - _self_
 
-name: resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid
+name: resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop
 
 model_config:
   continue_training: False
   start_epoch: 0
-  end_epoch: 2200
+  end_epoch: 3000
   encoder: "resnet"
   action_def: "delta"
   force_mod: True
@@ -16,4 +16,4 @@ model_config:
   force_encoder: "MLP"
   cross_attn: True
   hybrid: True
-  crop: 1000
+  crop: 98 # 124 
