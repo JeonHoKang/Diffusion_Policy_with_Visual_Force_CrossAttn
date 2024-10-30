@@ -130,8 +130,8 @@ def center_crop(images, crop_height, crop_width):
     N, C, H, W = images.shape
     assert crop_height <= H and crop_width <= W, "Crop size should be smaller than the original size"
     
-    # Calculate the center + 20 only when using 98 and 124 is -20 for start_x only
-    start_y = (H - crop_height) // 2
+    # Calculate the center + 20 only when using 98 and 128 is -20 for start_x only
+    start_y = (H - crop_height + 20) // 2
     start_x = (W - crop_width - 20) // 2
     # start_y = (H - crop_height) // 2
     # start_x = (W - crop_width - 20) // 2  
@@ -244,7 +244,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         if Transformer:
             print("center crop transformer")
             train_image_data = center_crop(train_image_data, 224, 224)
-        elif crop ==  98:
+        elif crop ==  128:
             # If crop parameter 64
             train_image_data = center_crop(train_image_data, crop, crop)
         else:
@@ -305,7 +305,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         self.augment = augment
         self.crop = crop
         if self.augment:
-            if self.crop == 98:
+            if self.crop == 128:
                 self.augmentation_transform = transforms.Compose([
                     transforms.RandomResizedCrop(size=(crop, crop), scale=(0.5, 1.5)),
                     transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.2),
