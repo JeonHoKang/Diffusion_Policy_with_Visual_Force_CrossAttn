@@ -45,6 +45,7 @@ import cv2
 from rotation_utils import quat_from_rot_m, rot6d_to_mat, mat_to_rot6d, quat_to_rot_m, normalize
 import hydra
 from omegaconf import DictConfig
+from data_util import center_crop
 
 def wait_for_message(
     msg_type,
@@ -129,43 +130,42 @@ class EndEffectorPoseNode(Node):
             JointState, self, self.joint_state_topic_, time_to_wait=1.0
         )
         if not current_joint_state_set:
-            self.get_logger().error("Failed to get current joint state")
-            return None
+            self.get_logger().warn("Failed to get current joint state")
+        else:
+            current_robot_state = RobotState()
+            current_robot_state.joint_state = current_joint_state
 
-        current_robot_state = RobotState()
-        current_robot_state.joint_state = current_joint_state
+            request = GetPositionFK.Request()
 
-        request = GetPositionFK.Request()
+            request.header.frame_id = self.base_
+            request.header.stamp = self.get_clock().now().to_msg()
 
-        request.header.frame_id = self.base_
-        request.header.stamp = self.get_clock().now().to_msg()
+            request.fk_link_names.append(self.end_effector_)
+            request.robot_state = current_robot_state
 
-        request.fk_link_names.append(self.end_effector_)
-        request.robot_state = current_robot_state
+            future = self.fk_client_.call_async(request)
 
-        future = self.fk_client_.call_async(request)
-
-        rclpy.spin_until_future_complete(self, future)
-        if future.result() is None:
-            self.get_logger().error("Failed to get FK solution")
-            return None
-        
-        response = future.result()
-        if response.error_code.val != MoveItErrorCodes.SUCCESS:
-            self.get_logger().error(
-                f"Failed to get FK solution: {response.error_code.val}"
-            )
-            return None
-        
-        pose = response.pose_stamped[0].pose
-        position = [pose.position.x, pose.position.y, pose.position.z]
-        quaternion = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
-        if quaternion[3] < 0:
-            quaternion = [-x for x in quaternion]
-        # # Convert quaternion to roll, pitch, yaw
-        # rotation = R.from_quat(quaternion)
-        # rpy = rotation.as_euler('xyz', degrees=False).tolist()
-        return position + quaternion
+            rclpy.spin_until_future_complete(self, future)
+            if future.result() is None:
+                self.get_logger().error("Failed to get FK solution")
+                return None
+            
+            response = future.result()
+            if response.error_code.val != MoveItErrorCodes.SUCCESS:
+                self.get_logger().error(
+                    f"Failed to get FK solution: {response.error_code.val}"
+                )
+                return None
+            
+            pose = response.pose_stamped[0].pose
+            position = [pose.position.x, pose.position.y, pose.position.z]
+            quaternion = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
+            if quaternion[3] < 0:
+                quaternion = [-x for x in quaternion]
+            # # Convert quaternion to roll, pitch, yaw
+            # rotation = R.from_quat(quaternion)
+            # rpy = rotation.as_euler('xyz', degrees=False).tolist()
+            return position + quaternion
     
     def get_ik(self, target_pose: Pose) -> JointState | None:
         request = GetPositionIK.Request()
@@ -240,7 +240,7 @@ class EndEffectorPoseNode(Node):
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encoder = "CNN", force_encode = False, cross_attn = False, hybrid = False):
+    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encoder = "CNN", force_encode = False, cross_attn = False, hybrid = False, crop = 1000):
         print(f"force_encoder: {force_encoder}")
         diffusion = DiffusionPolicy_Real(train=False, 
                                         encoder = encoder, 
@@ -250,7 +250,8 @@ class EvaluateRealRobot:
                                         force_encoder = force_encoder, 
                                         force_encode = force_encode, 
                                         cross_attn = cross_attn,
-                                        hybrid = hybrid)
+                                        hybrid = hybrid,
+                                        crop = crop)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
         # agent_pos is 2 dimensional
@@ -319,6 +320,7 @@ class EvaluateRealRobot:
         self.max_steps = max_steps
         self.ema_nets = ema_nets
         self.step_idx = step_idx
+        self.crop = crop
         if single_view:
             self.pipeline_B = pipeline_B
             self.camera_device = camera_devices
@@ -421,7 +423,6 @@ class EvaluateRealRobot:
         else:
             # Define the crop size
             crop_width, crop_height = 320, 240
-
         # Calculate the top-left corner of the crop box
         x1 = max(center_x - crop_width // 2, 0)
         y1 = max(center_y - crop_height // 2, 0)
@@ -431,16 +432,25 @@ class EvaluateRealRobot:
         y2 = min(center_y + crop_height // 2, height_B)
         cropped_image_B = color_image_B[y1:y2, x1:x2]
 
- 
+        if self.crop == 98:
+            crop_width, crop_height = self.crop, self.crop
+            cropped_image_B = np.transpose(cropped_image_B, (2,0,1))
+            C,H,W = cropped_image_B.shape
+            # Calculate the center + 20 only when using 98 and 124 is -20 for start_x only
+            start_y = (H - crop_height + 20) // 2
+            start_x = (W - crop_width - 20) // 2
+            # start_y = (H - crop_height) // 2
+            # start_x = (W - crop_width - 20) // 2  
+            # Perform cropping
+            cropped_image_B = cropped_image_B[:, start_y:start_y + crop_height, start_x:start_x + crop_width]
+            cropped_image_B = np.transpose(cropped_image_B, (1,2,0))
+
         # Convert BGR to RGB for Matplotlib visualization
         image_B_rgb = cv2.cvtColor(cropped_image_B, cv2.COLOR_BGR2RGB)
-        
-
-
          ### Visualizing purposes
-        import matplotlib.pyplot as plt
-        # plt.imshow(image_A_rgb)
-        # plt.show()
+        # import matplotlib.pyplot as plt
+        # # plt.imshow(image_A_rgb)
+        # # plt.show()
         # plt.imshow(image_B_rgb)
         # plt.show()
         print(f'current agent position, {agent_pos}')
@@ -564,43 +574,42 @@ class EvaluateRealRobot:
         # Get IK solution
         joint_state = EE_Pose_Node.get_ik(target_pose)
         if joint_state is None:
-            EE_Pose_Node.get_logger().error("Failed to get IK solution")
-            return
-        
-        # # Create a JointTrajectory message
-        # goal_msg = FollowJointTrajectory.Goal()
-        # trajectory_msg = JointTrajectory()
-        kuka_execution = KukaMotionPlanning(steps)
-        kuka_execution.send_goal(joint_state)
+            EE_Pose_Node.get_logger().warn("Failed to get IK solution")
+        else: 
+            # # Create a JointTrajectory message
+            # goal_msg = FollowJointTrajectory.Goal()
+            # trajectory_msg = JointTrajectory()
+            kuka_execution = KukaMotionPlanning(steps)
+            kuka_execution.send_goal(joint_state)
 
-        # # trajectory_msg.joint_names = kuka_execution.joint_names
-        # point = JointTrajectoryPoint()
-        # point.positions = joint_state.position
-        # point.time_from_start.sec = 1  # Set the duration for the motion
-        # trajectory_msg.points.append(point)
-        
-        # goal_msg.trajectory = trajectory_msg
-        # kuka_execution.send_goal(trajectory_msg)
+            # # trajectory_msg.joint_names = kuka_execution.joint_names
+            # point = JointTrajectoryPoint()
+            # point.positions = joint_state.position
+            # point.time_from_start.sec = 1  # Set the duration for the motion
+            # trajectory_msg.points.append(point)
+            
+            # goal_msg.trajectory = trajectory_msg
+            # kuka_execution.send_goal(trajectory_msg)
 
-        # # Send the trajectory to the action server
-        # kuka_execution._action_client.wait_for_server()
-        # kuka_execution._send_goal_future = kuka_execution._action_client.send_goal_async(goal_msg, feedback_callback=kuka_execution.feedback_callback)
-        # kuka_execution._send_goal_future.add_done_callback(kuka_execution.goal_response_callback)
-        EE_Pose_Node.destroy_node()
-        kuka_execution.destroy_node()
-        # construct new observation
-        obs = self.get_observation()
-        return obs
+            # # Send the trajectory to the action server
+            # kuka_execution._action_client.wait_for_server()
+            # kuka_execution._send_goal_future = kuka_execution._action_client.send_goal_async(goal_msg, feedback_callback=kuka_execution.feedback_callback)
+            # kuka_execution._send_goal_future.add_done_callback(kuka_execution.goal_response_callback)
+            EE_Pose_Node.destroy_node()
+            kuka_execution.destroy_node()
+            # construct new observationqq
+            obs = self.get_observation()
+            return obs
     
-        # the final arch has 2 parts
+        # the final arch has 2 partsqqq
     ###### Load Pretrained 1
     def load_pretrained(self, diffusion):
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_RAL_AAA+D_1800_aug.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop_RAL_AAA+D_223.z_2400_noaug_crop98_18.pth"
             #   if not os.path.isfile(ckpt_path):qq
-            #       id = "1XKpfNSlwYMGaF5CncoFaLKCDTWoLAHf1&confirm=tn"
+            #       id = "1XKpfNSlwYMGqaF5CncoFaLKCDTWoLAHf1&confirm=tn"q
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
 
             state_dict = torch.load(ckpt_path, map_location='cuda')
@@ -631,7 +640,7 @@ class EvaluateRealRobot:
         force_mod = self.force_mod
         force_encode = self.force_encode
         cross_attn = self.cross_attn
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_RAL_AAA+_resnet_delta_with_force.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_RAL_AAA+D_223.z_resnet_delta_with_force.json', 'r') as f:
             stats = json.load(f)
             if force_mod:
                 stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -643,7 +652,7 @@ class EvaluateRealRobot:
                 stats['action']['min'] = np.array(stats['action']['min'], dtype=np.float32)
                 stats['action']['max'] = np.array(stats['action']['max'], dtype=np.float32)
             else:
-                # Convert stats['agent_pos']['min'] and ['max'] to numpy arrays with float32 type
+                # Convert stats['agent_pos']['min'] and q['max'] to numpy arrays with float32 type
                 stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
                 stats['agent_pos']['max'] = np.array(stats['agent_pos']['max'], dtype=np.float32)
 
@@ -711,6 +720,7 @@ class EvaluateRealRobot:
                     elif single_view and cross_attn:
                         if self.hybrid:
                             obs_features = torch.cat([joint_features ,nforce_observation, nagent_poses], dim=-1)
+                            print(f'force obeservation : {nforce_observation}')
                         else:
                             obs_features = torch.cat([joint_features , nagent_poses], dim=-1)
                     elif not single_view and cross_attn:
@@ -818,7 +828,7 @@ class EvaluateRealRobot:
         plt.tight_layout()
         plt.show()
 
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop")
 def main(cfg: DictConfig):
     # Max steps will dicate how long the inference duration is going to be so it is very important
     # Initialize RealSense pipelines for both cameras
@@ -827,7 +837,16 @@ def main(cfg: DictConfig):
         max_steps = 100
         # Evaluate Real Robot Environment
         print(f"inference on {cfg.name}")
-        eval_real_robot = EvaluateRealRobot(max_steps= max_steps, action_def = cfg.model_config.action_def, encoder = cfg.model_config.encoder, force_encoder = cfg.model_config.force_encoder, force_mod=cfg.model_config.force_mod, single_view= cfg.model_config.single_view, force_encode = cfg.model_config.force_encode, cross_attn = cfg.model_config.cross_attn, hybrid = cfg.model_config.cross_attn)
+        eval_real_robot = EvaluateRealRobot(max_steps= max_steps,
+                                            action_def = cfg.model_config.action_def, 
+                                            encoder = cfg.model_config.encoder, 
+                                            force_encoder = cfg.model_config.force_encoder, 
+                                            force_mod=cfg.model_config.force_mod, 
+                                            single_view= cfg.model_config.single_view, 
+                                            force_encode = cfg.model_config.force_encode, 
+                                            cross_attn = cfg.model_config.cross_attn, 
+                                            hybrid = cfg.model_config.cross_attn,
+                                            crop = cfg.model_config.crop)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 
         # height, width, layers = imgs[0].shape

@@ -22,7 +22,7 @@ class KukaMotionPlanning(Node):
         point = JointTrajectoryPoint()
         point.positions = list(joint_trajectories.position)
         point.time_from_start.sec = 0  # Set the seconds part to 0
-        point.time_from_start.nanosec = int(0.4 * 1e9)  # Set the nanoseconds part to 750,000,000
+        point.time_from_start.nanosec = int(0.3 * 1e9)  # Set the nanoseconds part to 750,000,000
 
         trajectory_msg.points.append(point)
         goal_msg.trajectory = trajectory_msg

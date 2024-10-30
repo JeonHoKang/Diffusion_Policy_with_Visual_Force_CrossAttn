@@ -131,7 +131,7 @@ def center_crop(images, crop_height, crop_width):
     assert crop_height <= H and crop_width <= W, "Crop size should be smaller than the original size"
     
     # Calculate the center + 20 only when using 98 and 124 is -20 for start_x only
-    start_y = (H - crop_height + 20) // 2
+    start_y = (H - crop_height) // 2
     start_x = (W - crop_width - 20) // 2
     # start_y = (H - crop_height) // 2
     # start_x = (W - crop_width - 20) // 2  
