@@ -152,7 +152,7 @@ class CrossAttentionFusion(nn.Module):
                 nn.Flatten()
             )
         elif im_encoder == "resnet":
-            self.image_encoder = train_utils().get_resnet("resnet34", weights= None)
+            self.image_encoder = train_utils().get_resnet("resnet18", weights= None)
             self.image_encoder = train_utils().replace_bn_with_gn(self.image_encoder)
         elif im_encoder == "viT":
             self.image_encoder  = SimpleRGBObsEncoder()
@@ -205,7 +205,7 @@ class CrossAttentionFusion(nn.Module):
 
 
         # Cross-attention operation
-        attn_output, _ = self.attention(query=force_features, key=image_features, value=image_features)
+        attn_output, _ = self.attention(query=image_features, key=force_features, value=force_features)
         if self.train:
             attn_output = attn_output.permute(1, 0, 2)  # Shape: (batch_size, num_forces, hidden_dim)
 
@@ -482,7 +482,7 @@ def get_filename(input_string):
         return ""
 
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D_223.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D_419.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -506,7 +506,7 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size =100
+        batch_size = 128
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -539,8 +539,8 @@ class DiffusionPolicy_Real:
                 image_dim = (3,224,224)
             else:
                 cross_hidden_dim = 512
-                if crop == 98:
-                    image_dim = (3,98,98)
+                if crop == 128:
+                    image_dim = (3,128,128)
                 else:
                     image_dim = (3,320,240)
             joint_encoder = CrossAttentionFusion(image_dim, 4, cross_hidden_dim, batch_size = batch_size, 
@@ -551,7 +551,7 @@ class DiffusionPolicy_Real:
         else:
             if encoder == "resnet":
                 print("resnet")
-                vision_encoder = train_utils().get_resnet('resnet34')
+                vision_encoder = train_utils().get_resnet('resnet18')
                 vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
 
             elif encoder == "Transformer":
