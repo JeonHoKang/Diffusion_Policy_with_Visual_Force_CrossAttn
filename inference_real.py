@@ -448,11 +448,11 @@ class EvaluateRealRobot:
         # Convert BGR to RGB for Matplotlib visualization
         image_B_rgb = cv2.cvtColor(cropped_image_B, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        # import matplotlib.pyplot as plt
-        # # plt.imshow(image_A_rgb)
-        # # plt.show()
-        # plt.imshow(image_B_rgb)
+        import matplotlib.pyplot as plt
+        # plt.imshow(image_A_rgb)
         # plt.show()
+        plt.imshow(image_B_rgb)
+        plt.show()
         print(f'current agent position, {agent_pos}')
         agent_position = agent_pos[:3]
         agent_rotation = agent_pos[3:]
@@ -607,7 +607,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop_RAL_AAA+D_223.z_2400_noaug_crop98_18.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop98_RAL_AAA+D_419.z_1800_noaug_crop128_18.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGqaF5CncoFaLKCDTWoLAHf1&confirm=tn"q
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
@@ -640,7 +640,7 @@ class EvaluateRealRobot:
         force_mod = self.force_mod
         force_encode = self.force_encode
         cross_attn = self.cross_attn
-        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_RAL_AAA+D_223.z_resnet_delta_with_force.json', 'r') as f:
+        with open('/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/stats_RAL_AAA+D_419.z_resnet_delta_with_force.json', 'r') as f:
             stats = json.load(f)
             if force_mod:
                 stats['agent_pos']['min'] = np.array(stats['agent_pos']['min'], dtype=np.float32)
@@ -766,7 +766,7 @@ class EvaluateRealRobot:
       
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon
+                end = start + diffusion.action_horizon -3
                 action = action_pred[start:end,:] 
             # (action_horizon, action_dim)
     
@@ -777,11 +777,11 @@ class EvaluateRealRobot:
                     obs = self.execute_action(action[i], steps)
                     steps+=1
 
+
                     # save observations
                     obs_deque.append(obs)
                     if self.force_mod:
                         force_status.append(obs['force'])
-
                     # and reward/vis
                     # rewards.append(reward)
                     # imgs.append(env.render(mode='rgb_array'))

@@ -205,7 +205,7 @@ class CrossAttentionFusion(nn.Module):
 
 
         # Cross-attention operation
-        attn_output, _ = self.attention(query=image_features, key=force_features, value=force_features)
+        attn_output, _ = self.attention(query=force_features, key=image_features, value=image_features)
         if self.train:
             attn_output = attn_output.permute(1, 0, 2)  # Shape: (batch_size, num_forces, hidden_dim)
 
@@ -539,8 +539,8 @@ class DiffusionPolicy_Real:
                 image_dim = (3,224,224)
             else:
                 cross_hidden_dim = 512
-                if crop == 128:
-                    image_dim = (3,128,128)
+                if crop == 98:
+                    image_dim = (3,98,98)
                 else:
                     image_dim = (3,320,240)
             joint_encoder = CrossAttentionFusion(image_dim, 4, cross_hidden_dim, batch_size = batch_size, 

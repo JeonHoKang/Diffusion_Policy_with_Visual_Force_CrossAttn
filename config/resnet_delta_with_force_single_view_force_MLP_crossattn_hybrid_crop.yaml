@@ -16,4 +16,4 @@ model_config:
   force_encoder: "Linear"
   cross_attn: True
   hybrid: True
-  crop: 128 # 128
+  crop: 98 # 128
