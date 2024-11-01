@@ -244,7 +244,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         if Transformer:
             print("center crop transformer")
             train_image_data = center_crop(train_image_data, 224, 224)
-        elif crop ==  128:
+        elif crop ==  98:
             # If crop parameter 64
             train_image_data = center_crop(train_image_data, crop, crop)
         else:
@@ -305,10 +305,10 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         self.augment = augment
         self.crop = crop
         if self.augment:
-            if self.crop == 128:
+            if self.crop == 98:
                 self.augmentation_transform = transforms.Compose([
                     transforms.RandomResizedCrop(size=(crop, crop), scale=(0.5, 1.5)),
-                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.2),
+                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1),
                 ])
             else:
                 self.augmentation_transform = transforms.Compose([
@@ -362,7 +362,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             if self.augment:
                 noise_std = 0.00005
                 force_arr = nsample['force'][:self.obs_horizon, :]
-                scaling_factors = np.random.uniform(0.9, 1.2)
+                scaling_factors = np.random.uniform(0.8, 1.2)
                 force_augmented = force_arr * scaling_factors + np.random.normal(0, noise_std, size=force_arr.shape)
                 nsample['force'] = force_augmented.astype(np.float32)
             else:

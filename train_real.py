@@ -252,7 +252,7 @@ def train_Real_Robot(cfg: DictConfig):
             if epoch_idx > 950:
                 if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == end_epoch:
                     # Save only the state_dict of the model, including relevant submodules
-                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_noaug_crop128_18.pth'))
+                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_crop98_noaug_double.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')

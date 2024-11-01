@@ -2,7 +2,7 @@
 defaults:
   - _self_
 
-name: resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop128
+name: resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop98
 
 model_config:
   continue_training: False
@@ -16,4 +16,4 @@ model_config:
   force_encoder: "Linear"
   cross_attn: True
   hybrid: True
-  crop: 128 # 128
+  crop: 98 # 128
