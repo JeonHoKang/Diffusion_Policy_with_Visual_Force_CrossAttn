@@ -192,7 +192,6 @@ class CrossAttentionFusion(nn.Module):
         # image_features = self.image_fc(image_features)
         if self.im_encoder != "viT" and self.train:
             image_features = image_features.view(int(current_batch_size/2), self.obs_horizon, -1)
-            image_features_copy = image_features.clone()
         if self.train:
             image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
 
@@ -203,7 +202,6 @@ class CrossAttentionFusion(nn.Module):
             # force_features = force_features.view(batch_size, obs_horizon, -1)
             force_features = force_features.permute(1, 0, 2)  # Correct shape: (num_forces, batch_size, hidden_dim)
 
-
         # Cross-attention operation
         attn_output, _ = self.attention(query=force_features, key=image_features, value=image_features)
         if self.train:
@@ -211,7 +209,6 @@ class CrossAttentionFusion(nn.Module):
 
         # Generate the fused embedding
         joint_embedding = self.fusion_layer(attn_output)
-        joint_embedding = torch.cat([joint_embedding, image_features_copy], dim=-1)
         return joint_embedding
 
 class NumpyEncoder(json.JSONEncoder):
@@ -496,7 +493,9 @@ class DiffusionPolicy_Real:
                 force_encoder = "CNN",
                 cross_attn: bool = False,
                 hybrid: bool = False,
-                crop: int = 1000):
+                duplicate_view = False,
+                crop: int = 1000,
+                augment = True):
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
         action_dim = 9
         # parameters
@@ -506,7 +505,7 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size = 128
+        batch_size = 72
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -522,6 +521,10 @@ class DiffusionPolicy_Real:
         if not single_view:
             vision_encoder2 = train_utils().get_resnet('resnet18')
             vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
+        if duplicate_view:
+            vision_encoder2 = train_utils().get_resnet('resnet18')
+            vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
+
         if force_encode:
             if encoder == "viT":
                 hidden_dim_force = 768
@@ -583,6 +586,8 @@ class DiffusionPolicy_Real:
         if force_mod and not cross_attn:
             obs_dim = vision_feature_dim + force_feature_dim  + lowdim_obs_dim
         elif force_mod and cross_attn:
+            obs_dim = vision_feature_dim + lowdim_obs_dim
+        elif force_mod and cross_attn and duplicate_view:
             obs_dim = vision_feature_dim * 2 + lowdim_obs_dim
         else:            
             obs_dim = vision_feature_dim + lowdim_obs_dim
@@ -602,65 +607,62 @@ class DiffusionPolicy_Real:
                 force_mod = force_mod,
                 single_view=single_view,
                 augment = False,
+                duplicate_view = duplicate_view,
                 crop = crop
             )
             # save training data statistics (min, max) for each dim
 
 
 
-            # create dataloader
-            dataloader = torch.utils.data.DataLoader(
-                dataset,
-                batch_size=batch_size,
-                num_workers=4,
-                shuffle=True,
-                # accelerate cpu-gpu transfer
-                pin_memory=True,
-                # don't kill worker process afte each epoch
-                persistent_workers=True,
-            )
 
-            # dataset_augmented = RealRobotDataSet(
-            #     dataset_path=dataset_path,
-            #     pred_horizon=pred_horizon,
-            #     obs_horizon=obs_horizon,
-            #     action_horizon=action_horizon,
-            #     Transformer= Transformer_bool,
-            #     force_mod = force_mod,
-            #     single_view=single_view,
-            #     augment = True,
-            #     crop = crop
-            # )
+            if augment:
+                dataset_augmented = RealRobotDataSet(
+                    dataset_path=dataset_path,
+                    pred_horizon=pred_horizon,
+                    obs_horizon=obs_horizon,
+                    action_horizon=action_horizon,
+                    Transformer= Transformer_bool,
+                    force_mod = force_mod,
+                    single_view=single_view,
+                    augment = True,
+                    duplicate_view = duplicate_view,
+                    crop = crop
+                )
 
-            # data_loader_augmented = torch.utils.data.DataLoader(
-            #     dataset_augmented,
-            #     batch_size=batch_size,
-            #     num_workers=4,
-            #     shuffle=True,
-            #     # accelerate cpu-gpu transfer
-            #     pin_memory=True,
-            #     # don't kill worker process afte each epoch
-            #     persistent_workers=True,
-            # )
-            # combined_dataset = ConcatDataset([dataset, dataset_augmented])
+
+                combined_dataset = ConcatDataset([dataset, dataset_augmented])
             
-            # DataLoader for combined dataset
-            # data_loader_combined = torch.utils.data.DataLoader(
-            #     combined_dataset,
-            #     batch_size=batch_size,
-            #     num_workers=4,
-            #     shuffle=True,  # Shuffle to mix normal and augmented data
-            #     pin_memory=True,
-            #     persistent_workers=True
-            # )
-
+                # DataLoader for combined dataset
+                data_loader_combined = torch.utils.data.DataLoader(
+                    combined_dataset,
+                    batch_size=batch_size,
+                    num_workers=4,
+                    shuffle=True,  # Shuffle to mix normal and augmented data
+                    pin_memory=True,
+                    persistent_workers=True
+                )
+                self.dataloader = data_loader_combined
+                batch = next(iter(data_loader_combined))
+            else:
+                # create dataloader
+                dataloader = torch.utils.data.DataLoader(
+                    dataset,
+                    batch_size=batch_size,
+                    num_workers=4,
+                    shuffle=True,
+                    # accelerate cpu-gpu transfer
+                    pin_memory=True,
+                    # don't kill worker process afte each epoch
+                    persistent_workers=True,
+                )
+                self.dataloader = dataloader
+                batch = next(iter(dataloader))
            # Save the stats to a file
-            stats = dataset.stats
-            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}_augmented.json', 'w') as f:
+            stats = dataset_augmented.stats
+            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}_p1_augmented.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
 
-            self.dataloader = dataloader
             # self.dataloader = data_loader_augmented
             # self.data_loader_augmented = data_loader_augmented
             self.stats = stats
@@ -695,10 +697,11 @@ class DiffusionPolicy_Real:
         #     print("The images are different.")
         ######### End ########
             # visualize data in batch
-            batch = next(iter(dataloader))
             print("batch['image'].shape:", batch['image'].shape)
             if not single_view:
                 print("batch[image2].shape", batch["image2"].shape)
+            if duplicate_view:
+                print("batch[image_duplicate].shape", batch["duplicate_image"].shape)
 
             print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
             
@@ -745,12 +748,18 @@ class DiffusionPolicy_Real:
                 'vision_encoder2': vision_encoder2,
                 'noise_pred_net': noise_pred_net
             })
-        elif single_view and cross_attn:
+        elif single_view and cross_attn and not duplicate_view:
             nets = nn.ModuleDict({
                 'cross_attn_encoder': joint_encoder,
                 'noise_pred_net': noise_pred_net
             })
         elif not single_view and cross_attn and not force_encode:
+            nets = nn.ModuleDict({
+                'cross_attn_encoder': joint_encoder,
+                'vision_encoder2': vision_encoder2,
+                'noise_pred_net': noise_pred_net
+            }) 
+        elif single_view and duplicate_view and cross_attn and not force_encode:
             nets = nn.ModuleDict({
                 'cross_attn_encoder': joint_encoder,
                 'vision_encoder2': vision_encoder2,
@@ -780,7 +789,7 @@ class DiffusionPolicy_Real:
         self.num_diffusion_iters = num_diffusion_iters
         self.obs_horizon = obs_horizon
         self.obs_dim = obs_dim
-        if not single_view:
+        if not single_view or duplicate_view:
             self.vision_encoder2 = vision_encoder2
         if not cross_attn:
             self.vision_encoder = vision_encoder
@@ -824,6 +833,7 @@ def test():
     )
     
     batch = next(iter(dataloader))
+    print("batch['image'].shape:", batch['image'].shape)
     print("batch['image'].shape:", batch['image'].shape)
 
     # ### For debugging purposes uncomment
