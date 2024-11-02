@@ -13,7 +13,7 @@ from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 import os
 from torchvision import transforms
-
+from copy import deepcopy
 
 #@markdown ### **Dataset**
 #@markdown
@@ -227,6 +227,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                  force_mod: bool = False,
                  single_view: bool = False,
                  augment: bool = False,
+                 duplicate_view = False,
                  crop: int = 1000):
         
         # read from zarr dataset
@@ -241,14 +242,20 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             train_image_data = np.moveaxis(train_image_data, -1,1)
             train_image_data_second_view = dataset_root['data']['images_A'][:]
             train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
-        if Transformer:
-            print("center crop transformer")
-            train_image_data = center_crop(train_image_data, 224, 224)
-        elif crop ==  98:
-            # If crop parameter 64
-            train_image_data = center_crop(train_image_data, crop, crop)
+
+        train_image_data = center_crop(train_image_data, 224, 224)
+        if duplicate_view:
+            duplicate_image_view = deepcopy(train_image_data)
+            if crop ==  98:
+                # If crop parameter 64
+                train_image_data_copy = center_crop(duplicate_image_view, crop, crop)
+            else:
+                ("No Cropping")
         else:
-            ("No Cropping")
+            if crop == 98:
+                train_image_data = center_crop(train_image_data, crop, crop)
+            else:
+                print("No image change")
 
         # (N,3,96,96)
         # (N, D)
@@ -287,7 +294,9 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         
         # Start adding normalized training data
         normalized_train_data['image'] = train_image_data
-
+        if duplicate_view:
+            normalized_train_data['duplicate_image'] = train_image_data_copy
+        
         # images are already normalized
         if force_mod:      
             normalized_train_data['force'] = normalized_force_data
@@ -304,6 +313,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         self.single_view = single_view
         self.augment = augment
         self.crop = crop
+        self.duplicate_view = duplicate_view
         if self.augment:
             if self.crop == 98:
                 self.augmentation_transform = transforms.Compose([
@@ -312,7 +322,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                 ])
             else:
                 self.augmentation_transform = transforms.Compose([
-                    transforms.RandomResizedCrop(size=(240, 320), scale=(0.5, 1.5)),
+                    transforms.RandomResizedCrop(size=(224, 224), scale=(0.5, 1.5)),
                     transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.2),
                 ])
 
@@ -337,11 +347,18 @@ class RealRobotDataSet(torch.utils.data.Dataset):
         # Apply augmentation to images only
         if self.augment:
             # Convert image to PIL format for augmentation if needed
-            img_tensor = torch.tensor(nsample['image'][:self.obs_horizon, :])
-            img_augmented = [self.augmentation_transform(img) for img in img_tensor]
-            nsample['image'] = torch.stack(img_augmented)
-            nsample['image'] = np.array(nsample['image'])
+            if self.duplicate_view:
+                img_tensor = torch.tensor(nsample['duplicate_image'][:self.obs_horizon, :])
+                img_augmented = [self.augmentation_transform(img) for img in img_tensor]
+                nsample['duplicate_image'] = torch.stack(img_augmented)
+                nsample['duplicate_image'] = np.array(nsample['duplicate_image'])
+                nsample['image'] = nsample['image'][:self.obs_horizon, :]
 
+            else:
+                img_tensor = torch.tensor(nsample['image'][:self.obs_horizon, :])
+                img_augmented = [self.augmentation_transform(img) for img in img_tensor]
+                nsample['image'] = torch.stack(img_augmented)
+                nsample['image'] = np.array(nsample['image'])
 
             if not self.single_view:
                 img_tensor2 = torch.tensor(nsample['image2'][:self.obs_horizon, :])
@@ -356,13 +373,14 @@ class RealRobotDataSet(torch.utils.data.Dataset):
 
         # nsample['image'] = nsample['image'][:self.obs_horizon,:]
         nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
-
+        if self.duplicate_view:
+            nsample['duplicate_image'] = nsample['duplicate_image'][:self.obs_horizon, :]
         if self.force_mod:
             # discard unused observations
             if self.augment:
                 noise_std = 0.00005
                 force_arr = nsample['force'][:self.obs_horizon, :]
-                scaling_factors = np.random.uniform(0.8, 1.2)
+                scaling_factors = np.random.uniform(0.9, 1.1)
                 force_augmented = force_arr * scaling_factors + np.random.normal(0, noise_std, size=force_arr.shape)
                 nsample['force'] = force_augmented.astype(np.float32)
             else:

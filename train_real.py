@@ -14,7 +14,7 @@ import hydra
 from omegaconf import DictConfig
 
 # Make sure Crop is all there
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
@@ -27,6 +27,7 @@ def train_Real_Robot(cfg: DictConfig):
     force_encoder = cfg.model_config.force_encoder
     cross_attn = cfg.model_config.cross_attn
     hybrid = cfg.model_config.hybrid
+    duplicate_view = cfg.model_config.duplicate_view
     crop = cfg.model_config.crop
 
     if force_encode:
@@ -44,6 +45,7 @@ def train_Real_Robot(cfg: DictConfig):
                                     force_encoder=force_encoder,
                                     cross_attn=cross_attn,
                                     hybrid = hybrid,
+                                    duplicate_view = duplicate_view,
                                     crop = crop)
     data_name = diffusion.data_name
 
@@ -76,7 +78,7 @@ def train_Real_Robot(cfg: DictConfig):
     # Note that EMA parametesr are not optimized
     optimizer = torch.optim.AdamW(
         params=diffusion.nets.parameters(),
-        lr=3e-4, weight_decay=1e-6)
+        lr=2e-4, weight_decay=1e-6)
 
     # Cosine LR schedule with linear warmup
     lr_scheduler = get_scheduler(
@@ -89,7 +91,7 @@ def train_Real_Robot(cfg: DictConfig):
     epoch_losses = []
 
     with tqdm(range(start_epoch, end_epoch), desc='Epoch') as tglobal:
-        # epoch loopqqqqqqqqqqqqq
+        # epoch
         for epoch_idx in tglobal:
             epoch_loss = list()
             ### THis is for seperately training augmented and non augmented data
@@ -112,6 +114,8 @@ def train_Real_Robot(cfg: DictConfig):
 
                     if not single_view:
                         nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
+                    if duplicate_view:
+                        nimage_duplicate = nbatch['duplicate_image'][:,:diffusion.obs_horizon].to(device)
                     if force_mod:
                         nforce = nbatch['force'][:,:diffusion.obs_horizon].to(device)
                     else:
@@ -119,39 +123,40 @@ def train_Real_Robot(cfg: DictConfig):
                     nagent_pos = nbatch['agent_pos'][:,:diffusion.obs_horizon].to(device)
                     naction = nbatch['action'].to(device)
                     
-                    ## Debug sequential data structure. It shoud be consecutive
+                    # Debug sequential data structure. It shoud be consecutive
                     # import matplotlib.pyplot as plt
                     # imdata1 = nimage[0].cpu()
                     # imdata1 = imdata1.numpy()
                     # print(f"shape of the image data:", imdata1.shape)
-                    # # imdata2 = nimage_second_view[0].cpu()
-                    # # imdata2 = imdata2.numpy()
-          
-                    # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-                    # for j in range(2):
-                    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                    #     img = imdata1[j].transpose(1, 2, 0)
+                    # imdata2 = nimage_duplicate[0].cpu()
+                    # imdata2 = imdata2.numpy()
+                    # print(f"shape of the image data:", imdata2.shape)
 
-                    # #     # Plot the image on the corresponding subplot
-                    #     axes[j].imshow(img)
-                    #     axes[j].axis('off')  # Hide the axes
-                    #     # Show the plot
-                    # plt.show()  
-                    ### For double realsense config only
+                    # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+                    # # for j in range(2):
+                    # #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+                    # #     img = imdata1[j].transpose(1, 2, 0)
+
+                    # # #     # Plot the image on the corresponding subplot
+                    # #     axes[j].imshow(img)
+                    # #     axes[j].axis('off')  # Hide the axes
+                    # #     # Show the plot
+                    # # plt.show()  
+                    # ### For double realsense config only
                     # for j in range(2):
                     #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                    #     # img2 = imdata2[j].transpose(1, 2, 0)
+                    #     img2 = imdata2[j].transpose(1, 2, 0)
 
                     #     # Plot the image on the corresponding subplot
                     #     axes[j].imshow(img2)
                     #     axes[j].axis('off')  # Hide the axes
                     #     # Show the plot
-                    # plt.show()  
+                    # plt.show()
 
                     if encoder == "resnet":
-                        image_input = nimage.flatten(end_dim=1)
+                        image_input = nimage_duplicate.flatten(end_dim=1)
                     elif encoder == "viT":
-                        image_input = nimage
+                        image_input = nimage_duplicate
                     B = nagent_pos.shape[0]
                     if not cross_attn:
                         # encoder vision features
@@ -167,7 +172,12 @@ def train_Real_Robot(cfg: DictConfig):
                             nimage_second_view.flatten(end_dim=1))
                         image_features_second_view = image_features_second_view.reshape(
                             *nimage_second_view.shape[:2],-1)
-                    
+                    if duplicate_view:
+                        # encoder vision features
+                        image_features_duplicate = diffusion.nets['vision_encoder2'](
+                            nimage.flatten(end_dim=1))
+                        image_features_duplicate = image_features_duplicate.reshape(
+                            *nimage.shape[:2],-1)                    
                     if force_mod and force_encode:
                         force_feature = diffusion.nets['force_encoder'](nforce)
                         # force_feature = force_feature.reshape(
@@ -200,6 +210,12 @@ def train_Real_Robot(cfg: DictConfig):
                             obs_features = torch.cat([joint_features, image_features_second_view, force_feature, nagent_pos], dim=-1)
                         else:
                             obs_features = torch.cat([joint_features, image_features_second_view, nagent_pos], dim=-1)
+                    elif single_view and duplicate_view and cross_attn:
+                        # TODO: If hybrid is true, then add force feature on top of it.
+                        if hybrid:
+                            obs_features = torch.cat([joint_features, image_features_duplicate, force_feature, nagent_pos], dim=-1)
+                        else:
+                            obs_features = torch.cat([joint_features, image_features_duplicate, nagent_pos], dim=-1)
                     else:
                         print("Check your configuration for training")
 
@@ -252,7 +268,7 @@ def train_Real_Robot(cfg: DictConfig):
             if epoch_idx > 950:
                 if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == end_epoch:
                     # Save only the state_dict of the model, including relevant submodules
-                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_crop98_noaug_double.pth'))
+                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_cross_Attn_aug_224.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')
