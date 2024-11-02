@@ -140,6 +140,21 @@ def center_crop(images, crop_height, crop_width):
     
     return cropped_images
 
+def regular_center_crop(images, crop_height, crop_width):
+    # Get original dimensions
+    N, C, H, W = images.shape
+    assert crop_height <= H and crop_width <= W, "Crop size should be smaller than the original size"
+    
+    # Calculate the center + 20 only when using 98 and 128 is -20 for start_x only
+    start_y = (H - crop_height) // 2
+    start_x = (W - crop_width) // 2
+    # start_y = (H - crop_height) // 2
+    # start_x = (W - crop_width - 20) // 2  
+    # Perform cropping
+    cropped_images = images[:, :, start_y:start_y + crop_height, start_x:start_x + crop_width]
+    
+    return cropped_images
+
 # dataset
 
 class PushTImageDataset(torch.utils.data.Dataset):
@@ -243,7 +258,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             train_image_data_second_view = dataset_root['data']['images_A'][:]
             train_image_data_second_view = np.moveaxis(train_image_data_second_view, -1,1)
 
-        train_image_data = center_crop(train_image_data, 224, 224)
+        train_image_data = regular_center_crop(train_image_data, 224, 224)
         if duplicate_view:
             duplicate_image_view = deepcopy(train_image_data)
             if crop ==  98:
@@ -324,6 +339,8 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                 self.augmentation_transform = transforms.Compose([
                     transforms.RandomResizedCrop(size=(224, 224), scale=(0.5, 1.5)),
                     transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.2),
+                    transforms.Resize((224, 224)),  # Ensures final output is exactly 224x224
+
                 ])
 
     def __len__(self):
@@ -352,13 +369,14 @@ class RealRobotDataSet(torch.utils.data.Dataset):
                 img_augmented = [self.augmentation_transform(img) for img in img_tensor]
                 nsample['duplicate_image'] = torch.stack(img_augmented)
                 nsample['duplicate_image'] = np.array(nsample['duplicate_image'])
-                nsample['image'] = nsample['image'][:self.obs_horizon, :]
+                nsample['image'] = nsample['image'][:self.obs_horizon,:]
 
             else:
                 img_tensor = torch.tensor(nsample['image'][:self.obs_horizon, :])
                 img_augmented = [self.augmentation_transform(img) for img in img_tensor]
                 nsample['image'] = torch.stack(img_augmented)
                 nsample['image'] = np.array(nsample['image'])
+                nsample['image'] = nsample['image'][:self.obs_horizon,:]
 
             if not self.single_view:
                 img_tensor2 = torch.tensor(nsample['image2'][:self.obs_horizon, :])
@@ -370,8 +388,7 @@ class RealRobotDataSet(torch.utils.data.Dataset):
             nsample['image'] = nsample['image'][:self.obs_horizon, :]
             if not self.single_view:
                 nsample['image2'] = nsample['image2'][:self.obs_horizon, :]
-
-        # nsample['image'] = nsample['image'][:self.obs_horizon,:]
+    
         nsample['agent_pos'] = nsample['agent_pos'][:self.obs_horizon,:]
         if self.duplicate_view:
             nsample['duplicate_image'] = nsample['duplicate_image'][:self.obs_horizon, :]

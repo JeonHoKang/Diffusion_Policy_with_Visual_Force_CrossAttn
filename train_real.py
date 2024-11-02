@@ -14,7 +14,7 @@ import hydra
 from omegaconf import DictConfig
 
 # Make sure Crop is all there
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_no_force_single_view")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
@@ -64,7 +64,7 @@ def train_Real_Robot(cfg: DictConfig):
     ema = EMAModel(
         parameters=diffusion.nets.parameters(),
         power=0.75)
-    checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
+    checkpoint_dir = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints"
     # To continue t raining load and set the start epoch
     if continue_training:
         start_epoch = 1500
@@ -128,20 +128,20 @@ def train_Real_Robot(cfg: DictConfig):
                     # imdata1 = nimage[0].cpu()
                     # imdata1 = imdata1.numpy()
                     # print(f"shape of the image data:", imdata1.shape)
-                    # imdata2 = nimage_duplicate[0].cpu()
-                    # imdata2 = imdata2.numpy()
-                    # print(f"shape of the image data:", imdata2.shape)
+                    # # imdata2 = nimage_duplicate[0].cpu()
+                    # # imdata2 = imdata2.numpy()
+                    # # print(f"shape of the image data:", imdata2.shape)
 
                     # fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-                    # # for j in range(2):
-                    # #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
-                    # #     img = imdata1[j].transpose(1, 2, 0)
+                    # for j in range(2):
+                    #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
+                    #     img = imdata1[j].transpose(1, 2, 0)
 
-                    # # #     # Plot the image on the corresponding subplot
-                    # #     axes[j].imshow(img)
-                    # #     axes[j].axis('off')  # Hide the axes
-                    # #     # Show the plot
-                    # # plt.show()  
+                    # #     # Plot the image on the corresponding subplot
+                    #     axes[j].imshow(img)
+                    #     axes[j].axis('off')  # Hide the axes
+                    #     # Show the plot
+                    # plt.show()  
                     # ### For double realsense config only
                     # for j in range(2):
                     #     # Convert the 3x96x96 tensor to a 96x96x3 image (for display purposes)
@@ -154,9 +154,15 @@ def train_Real_Robot(cfg: DictConfig):
                     # plt.show()
 
                     if encoder == "resnet":
-                        image_input = nimage_duplicate.flatten(end_dim=1)
+                        if duplicate_view:
+                            image_input = nimage_duplicate.flatten(end_dim=1)
+                        else:
+                            image_input = nimage.flatten(end_dim=1)
                     elif encoder == "viT":
-                        image_input = nimage_duplicate
+                        if duplicate_view:
+                            image_input = nimage_duplicate
+                        else:
+                            image_input = nimage
                     B = nagent_pos.shape[0]
                     if not cross_attn:
                         # encoder vision features
@@ -268,7 +274,7 @@ def train_Real_Robot(cfg: DictConfig):
             if epoch_idx > 950:
                 if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == end_epoch:
                     # Save only the state_dict of the model, including relevant submodules
-                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_cross_Attn_aug_224.pth'))
+                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_baseline.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')

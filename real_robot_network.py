@@ -480,7 +480,7 @@ def get_filename(input_string):
         return ""
 
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D_419.zarr.zip"
+dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/RAL_AAA+D_419.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -644,6 +644,8 @@ class DiffusionPolicy_Real:
                 )
                 self.dataloader = data_loader_combined
                 batch = next(iter(data_loader_combined))
+                stats = dataset_augmented.stats
+
             else:
                 # create dataloader
                 dataloader = torch.utils.data.DataLoader(
@@ -658,9 +660,10 @@ class DiffusionPolicy_Real:
                 )
                 self.dataloader = dataloader
                 batch = next(iter(dataloader))
+                stats = dataset.stats
+
            # Save the stats to a file
-            stats = dataset_augmented.stats
-            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}_p1_augmented.json', 'w') as f:
+            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}_vn.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
 
