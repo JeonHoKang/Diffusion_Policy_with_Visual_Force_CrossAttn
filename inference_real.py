@@ -46,6 +46,8 @@ from rotation_utils import quat_from_rot_m, rot6d_to_mat, mat_to_rot6d, quat_to_
 import hydra
 from omegaconf import DictConfig
 from data_util import center_crop
+import csv
+from datetime import datetime
 
 def wait_for_message(
     msg_type,
@@ -241,6 +243,8 @@ class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
     def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encoder = "CNN", force_encode = False, cross_attn = False, hybrid = False, crop = 1000):
+        self.csv_file_path = self.create_unique_csv_path()
+        self.setup_csv_file()
         print(f"force_encoder: {force_encoder}")
         diffusion = DiffusionPolicy_Real(train=False, 
                                         encoder = encoder, 
@@ -348,6 +352,30 @@ class EvaluateRealRobot:
             [obs] * diffusion.obs_horizon, maxlen=diffusion.obs_horizon)
 
         self.obs_deque = obs_deque
+        
+    def create_unique_csv_path(self):
+        """Generate a unique CSV file path with a timestamp."""
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"inference_{timestamp}.csv"
+        directory = "/home/lm-2023/jeon_team_ws/playback_pose/src/data_collection/data_collection"
+        return os.path.join(directory, filename)
+    
+    def setup_csv_file(self):
+        """Set up the CSV file with headers if it does not already exist."""
+        if not os.path.isfile(self.csv_file_path):
+            with open(self.csv_file_path, mode='w', newline='') as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerow(['fx', 'fy', 'fz'])  # Write header if new file
+
+    def save_agent_pos_to_csv(self, force_torque_data):
+        """
+        Save agent position data to a CSV file.
+
+        :param agent_pos: List or array containing the agent's position and rotation (e.g., [x, y, z, qx, qy, qz, qw])
+        """
+        with open(self.csv_file_path, mode='a', newline='') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(force_torque_data)
 
     def get_observation(self):
         ### Get initial observation for the
@@ -454,6 +482,7 @@ class EvaluateRealRobot:
         plt.imshow(image_B_rgb)
         plt.show()
         print(f'current agent position, {agent_pos}')
+        self.save_agent_pos_to_csv(force_torque_data)
         agent_position = agent_pos[:3]
         agent_rotation = agent_pos[3:]
         rot_m_agent = quat_to_rot_m(agent_rotation)
@@ -607,7 +636,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_MLP_crossattn_hybrid_crop98_RAL_AAA+D_419.z_1800_noaug_crop128_18.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop98_RAL_AAA+D_419.z_2000_crop98_18_with_aug.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGqaF5CncoFaLKCDTWoLAHf1&confirm=tn"q
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
@@ -766,7 +795,8 @@ class EvaluateRealRobot:
       
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
-                end = start + diffusion.action_horizon -3
+                
+                end = start + diffusion.action_horizon -4
                 action = action_pred[start:end,:] 
             # (action_horizon, action_dim)
     
