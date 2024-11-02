@@ -16,6 +16,7 @@ import timm
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import ConcatDataset
+
 #@markdown ### **Network**
 #@markdown
 #@markdown Defines a 1D UNet architecture `ConditionalUnet1D`
@@ -188,11 +189,10 @@ class CrossAttentionFusion(nn.Module):
         if self.im_encoder == "viT":
             image_input = cross_center_crop(image_input, 224, 224)
         image_features = self.image_encoder(image_input)
-    
+
         # image_features = self.image_fc(image_features)
         if self.im_encoder != "viT" and self.train:
             image_features = image_features.view(int(current_batch_size/2), self.obs_horizon, -1)
-            image_features_copy = image_features.clone()
         if self.train:
             image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
 
@@ -211,7 +211,7 @@ class CrossAttentionFusion(nn.Module):
 
         # Generate the fused embedding
         joint_embedding = self.fusion_layer(attn_output)
-        joint_embedding = torch.cat([joint_embedding, image_features_copy], dim=-1)
+
         return joint_embedding
 
 class NumpyEncoder(json.JSONEncoder):
@@ -583,7 +583,7 @@ class DiffusionPolicy_Real:
         if force_mod and not cross_attn:
             obs_dim = vision_feature_dim + force_feature_dim  + lowdim_obs_dim
         elif force_mod and cross_attn:
-            obs_dim = vision_feature_dim * 2 + lowdim_obs_dim
+            obs_dim = vision_feature_dim  + lowdim_obs_dim
         else:            
             obs_dim = vision_feature_dim + lowdim_obs_dim
         if hybrid:
@@ -644,7 +644,7 @@ class DiffusionPolicy_Real:
             # )
             # combined_dataset = ConcatDataset([dataset, dataset_augmented])
             
-            # DataLoader for combined dataset
+            # # DataLoader for combined dataset
             # data_loader_combined = torch.utils.data.DataLoader(
             #     combined_dataset,
             #     batch_size=batch_size,
@@ -656,7 +656,7 @@ class DiffusionPolicy_Real:
 
            # Save the stats to a file
             stats = dataset.stats
-            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}_augmented.json', 'w') as f:
+            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}.json', 'w') as f:
                 json.dump(stats, f, cls=NumpyEncoder)
                 print("stats saved")
 

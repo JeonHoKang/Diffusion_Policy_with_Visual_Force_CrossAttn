@@ -476,11 +476,11 @@ class EvaluateRealRobot:
         # Convert BGR to RGB for Matplotlib visualization
         image_B_rgb = cv2.cvtColor(cropped_image_B, cv2.COLOR_BGR2RGB)
          ### Visualizing purposes
-        import matplotlib.pyplot as plt
-        # plt.imshow(image_A_rgb)
+        # import matplotlib.pyplot as plt
+        # # plt.imshow(image_A_rgb)
+        # # plt.show()
+        # plt.imshow(image_B_rgb)
         # plt.show()
-        plt.imshow(image_B_rgb)
-        plt.show()
         print(f'current agent position, {agent_pos}')
         self.save_agent_pos_to_csv(force_torque_data)
         agent_position = agent_pos[:3]
@@ -636,7 +636,7 @@ class EvaluateRealRobot:
 
         load_pretrained = True
         if load_pretrained:
-            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop98_RAL_AAA+D_419.z_2000_crop98_18_with_aug.pth"
+            ckpt_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints/resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop98_RAL_AAA+D_419.z_2600_crop98_18_with_aug.pth"
             #   if not os.path.isfile(ckpt_path):qq
             #       id = "1XKpfNSlwYMGqaF5CncoFaLKCDTWoLAHf1&confirm=tn"q
             #       gdown.download(id=id, output=ckpt_path, quiet=False)    
@@ -796,7 +796,7 @@ class EvaluateRealRobot:
                 # only take action_horizon number of actions5
                 start = diffusion.obs_horizon - 1
                 
-                end = start + diffusion.action_horizon -4
+                end = start + diffusion.action_horizon
                 action = action_pred[start:end,:] 
             # (action_horizon, action_dim)
     
