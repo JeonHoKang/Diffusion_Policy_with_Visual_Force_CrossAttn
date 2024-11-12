@@ -21,7 +21,7 @@ Create Conda Environment (Recommended) and run:
 
 
 ```bash
-pip install requirements.txt
+$ pip install requirements.txt
 ```
 
 ## Real Robot 
@@ -41,7 +41,9 @@ After obtaininig joint state from handguiding or any other methods,
 Run
 
 ```bash
-python robot_data_collection_joint_state.py
+
+$ python robot_data_collection_joint_state.py
+
 ```
 
 
@@ -51,7 +53,7 @@ python robot_data_collection_joint_state.py
 After loading your own zarr file or ours in [real_robot_network.py](real_robot_network.py)
 
 ```bash
-$ python trtrain_real.py
+$ python train_real.py
 ```
 
 You can select or create your own [Config](config) file for training configuration
