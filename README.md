@@ -1,6 +1,6 @@
 # Compliant Object Manipulation for High Precision Prying Task Using Diffusion Policy with Force Modality
 
-[[project page](https://rros-lab.github.io/diffusion-with-force.github.io/)] [data (Coming Soon)]
+[[project page](https://rros-lab.github.io/diffusion-with-force.github.io/)] [data](https://drive.google.com/drive/folders/1Mgbf2isA3XL6OeCrQGP3ahebH5lbbQgB?usp=drive_link)
 
 Jeon Ho Kang, Sagar Joshi, Ruopeng Huang, and Satyandra K. Gupta
 
@@ -30,8 +30,7 @@ For all demonstrations, we used [KUKA IIWA 14 Robot](https://www.kuka.com/en-de/
 
 
 ## Real Robot Data for Prying Task (Zarr File)
-(Coming Soon)
-Data collected on Kuka IIWA 14 robot containing robot state, image, force and action will be published [here]
+Data collected on Kuka IIWA 14 robot containing robot state, image, force and action will be published [here](https://drive.google.com/drive/folders/1Mgbf2isA3XL6OeCrQGP3ahebH5lbbQgB?usp=drive_link)
 
 
 To collect your own data:
