@@ -9,7 +9,7 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 import gdown
 import os
 from data_util import PushTImageDataset
-from train_utils import train_utils, SimpleViTEncoder
+from train_utils import train_utils
 #@markdown ### **Network**
 #@markdown
 #@markdown Defines a 1D UNet architecture `ConditionalUnet1D`

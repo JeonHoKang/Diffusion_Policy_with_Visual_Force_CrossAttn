@@ -8,3 +8,4 @@ __pycache__/
 *.ckpt
 *outputs*
 *r3m*
+*deprecated*
