@@ -1,6 +1,6 @@
-# Compliant Object Manipulation for High Precision Prying Task Using <br \> Diffusion Policy with Force Modality
+# Compliant Object Manipulation for High Precision Prying Task Using Diffusion Policy with Force Modality
 
-[project page](https://rros-lab.github.io/diffusion-with-force.github.io/) [data (Coming Soon)]
+[[project page](https://rros-lab.github.io/diffusion-with-force.github.io/)] [data (Coming Soon)]
 
 Jeon Ho Kang, Sagar Joshi, Ruopeng Huang, and Satyandra K. Gupta
 
@@ -12,7 +12,7 @@ Baseline code for diffusion policy was derived from [Diffusion Policy](https://g
 
 All  **Real** tags are for real robot implementation
 
-However, [data_util.py](data_util.py) is shared amongst them.
+However, [data_util.py](data_util.py) is shared for real and test
 
 
 ## Dependencies
@@ -20,9 +20,9 @@ However, [data_util.py](data_util.py) is shared amongst them.
 Create Conda Environment (Recommended) and run:
 
 
-'''
+```bash
 pip install requirements.txt
-'''
+```
 
 ## Real Robot 
 
@@ -40,11 +40,9 @@ After obtaininig joint state from handguiding or any other methods,
 
 Run
 
-'''
-
-$ python robot_data_collection_joint_state.py
-
-'''
+```bash
+python robot_data_collection_joint_state.py
+```
 
 
 ## Training Your Own Policy
@@ -52,18 +50,18 @@ $ python robot_data_collection_joint_state.py
 
 After loading your own zarr file or ours in [real_robot_network.py](real_robot_network.py)
 
-'''
+```bash
 $ python trtrain_real.py
-'''
+```
 
 You can select or create your own [Config](config) file for training configuration
 
 
 ## Inference
 
-'''
+```bash
 $ python inference_real.py
-'''
+```
 
 
 ## Acknowledgement
