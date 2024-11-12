@@ -480,7 +480,7 @@ def get_filename(input_string):
         return ""
 
 
-dataset_path = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/RAL_AAA+D_419.zarr.zip"
+dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D_419.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
@@ -506,7 +506,7 @@ class DiffusionPolicy_Real:
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size = 72
+        batch_size = 100
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"

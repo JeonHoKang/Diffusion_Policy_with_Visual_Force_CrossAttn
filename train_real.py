@@ -14,7 +14,7 @@ import hydra
 from omegaconf import DictConfig
 
 # Make sure Crop is all there
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_no_force_single_view")
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop")
 def train_Real_Robot(cfg: DictConfig):
     continue_training=  cfg.model_config.continue_training
     start_epoch = cfg.model_config.start_epoch
@@ -64,7 +64,7 @@ def train_Real_Robot(cfg: DictConfig):
     ema = EMAModel(
         parameters=diffusion.nets.parameters(),
         power=0.75)
-    checkpoint_dir = "/home/lm-2023/jeon_team_ws/playback_pose/src/Diffusion_Policy_ICRA/checkpoints"
+    checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
     # To continue t raining load and set the start epoch
     if continue_training:
         start_epoch = 1500
@@ -274,7 +274,7 @@ def train_Real_Robot(cfg: DictConfig):
             if epoch_idx > 950:
                 if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == end_epoch:
                     # Save only the state_dict of the model, including relevant submodules
-                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_baseline.pth'))
+                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_bench.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')
