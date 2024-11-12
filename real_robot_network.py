@@ -171,7 +171,7 @@ class CrossAttentionFusion(nn.Module):
         # Fully connected layer to map the image features to hidden_dim
         self.image_fc = nn.Linear(image_dim, hidden_dim)
 
-            # Force feature extraction
+        # Force feature extraction
         self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True, im_encoder = im_encoder, train = train)
         # Cross-attention layers
         self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4)
@@ -526,7 +526,7 @@ class DiffusionPolicy_Real:
             vision_encoder2 = train_utils().get_resnet('resnet18')
             vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
 
-        if force_encode:
+        if force_mod and force_encode:
             if encoder == "viT":
                 hidden_dim_force = 768
             else:
@@ -537,7 +537,7 @@ class DiffusionPolicy_Real:
                                           cross_attn=cross_attn,
                                           train=train)
 
-        if cross_attn:
+        if cross_attn and force_mod:
             if encoder == "viT":
                 cross_hidden_dim = 768
                 image_dim = (3,224,224)
@@ -586,7 +586,7 @@ class DiffusionPolicy_Real:
         # observation feature has 514 dims in total per step
         if force_mod and not cross_attn:
             obs_dim = vision_feature_dim + force_feature_dim  + lowdim_obs_dim
-        elif force_mod and cross_attn:
+        elif force_mod and cross_attn and not duplicate_view:
             obs_dim = vision_feature_dim + lowdim_obs_dim
         elif force_mod and cross_attn and duplicate_view:
             obs_dim = vision_feature_dim * 2 + lowdim_obs_dim

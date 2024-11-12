@@ -88,6 +88,7 @@ def train_Real_Robot(cfg: DictConfig):
         num_training_steps=len(diffusion.dataloader) * end_epoch
     )
     # Log loss for epochs
+    
     epoch_losses = []
 
     with tqdm(range(start_epoch, end_epoch), desc='Epoch') as tglobal:
