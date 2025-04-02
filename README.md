@@ -72,7 +72,7 @@ $ python inference_real.py
 
 ## 📚 Citation
 
-If you use this work, please cite:
+If you find our work useful or interesting, please consider citing:
   
 ```bibtex
 @article{kang2025robotic,
