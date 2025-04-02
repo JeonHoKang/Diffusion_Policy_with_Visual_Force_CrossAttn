@@ -64,16 +64,16 @@ You can select or create your own [Config](config) file for training configurati
 $ python inference_real.py
 ```
 
+## Acknowledgement
+
++ Diffusion policy was adapted from [Diffusion Policy](https://github.com/real-stanford/diffusion_policy)
+
+  
+
 ## 📚 Citation
 
 If you use this work, please cite:
-
-
-If you find our work interesting or useful, please consider citing 
-
-<details>
-<summary>Click to expand BibTeX</summary>
-
+  
 ```bibtex
 @article{kang2025robotic,
   author    = {Jeon Ho Kang and Sagar Joshi and Ruopeng Huang and Satyandra K. Gupta},
@@ -82,9 +82,3 @@ If you find our work interesting or useful, please consider citing
   year      = {2025},
   note      = {Accepted for publication. Available on arXiv: arXiv:2503.03998},
 }
-
-## Acknowledgement
-
-+ Diffusion policy was adapted from [Diffusion Policy](https://github.com/real-stanford/diffusion_policy)
-
-  
