@@ -1,6 +1,6 @@
 # Compliant Object Manipulation for High Precision Prying Task Using Diffusion Policy with Force Modality
 
-[[project page](https://rros-lab.github.io/diffusion-with-force.github.io/)] [[data](https://drive.google.com/drive/folders/1Mgbf2isA3XL6OeCrQGP3ahebH5lbbQgB?usp=drive_link)]
+[[project page](https://rros-lab.github.io/diffusion-with-force.github.io/)] [[data](https://drive.google.com/drive/folders/1Mgbf2isA3XL6OeCrQGP3ahebH5lbbQgB?usp=drive_link)] [[Paper](https://arxiv.org/abs/2503.03998)]
 
 Jeon Ho Kang, Sagar Joshi, Ruopeng Huang, and Satyandra K. Gupta
 
