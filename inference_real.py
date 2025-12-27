@@ -243,7 +243,16 @@ class EndEffectorPoseNode(Node):
 class EvaluateRealRobot:
     # construct ResNet18 encoder
     # if you have multiple camera views, use seperate encoder weights for each view.
-    def __init__(self, max_steps, encoder = "resnet", action_def = "delta", force_mod= False, single_view = False, force_encoder = "CNN", force_encode = False, cross_attn = False, hybrid = False, duplicate_view = False, crop = 1000):
+    def __init__(self, max_steps, 
+                 encoder = "resnet",
+                  action_def = "delta", 
+                  force_mod= False, single_view = False,
+                  force_encoder = "CNN",
+                  force_encode = False,
+                  cross_attn = False, 
+                  hybrid = False,
+                  crop = 1000):
+        
         self.csv_file_path = self.create_unique_csv_path()
         self.setup_csv_file()
         print(f"force_encoder: {force_encoder}")
@@ -256,7 +265,6 @@ class EvaluateRealRobot:
                                         force_encode = force_encode, 
                                         cross_attn = cross_attn,
                                         hybrid = hybrid,
-                                        duplicate_view=duplicate_view,
                                         crop = crop)
         # num_epochs = 100
         ema_nets = self.load_pretrained(diffusion)
@@ -327,7 +335,6 @@ class EvaluateRealRobot:
         self.ema_nets = ema_nets
         self.step_idx = step_idx
         self.crop = crop
-        self.duplicate_view = duplicate_view
         if single_view:
             self.pipeline_B = pipeline_B
             self.camera_device = camera_devices
@@ -462,10 +469,7 @@ class EvaluateRealRobot:
         y2 = min(center_y + crop_height // 2, height_B)
 
         cropped_image_B = color_image_B[y1:y2, x1:x2]
-        if self.duplicate_view:
-            cropped_image_B_copy = deepcopy(cropped_image_B)
-            image_B_rgb_copy = cv2.cvtColor(cropped_image_B_copy, cv2.COLOR_BGR2RGB)
-            image_B_copy = np.transpose(image_B_rgb_copy, (2, 0, 1))
+
 
         if self.crop == 98:
             crop_width, crop_height = self.crop, self.crop
@@ -502,8 +506,7 @@ class EvaluateRealRobot:
             image_A = np.transpose(image_A_rgb, (2, 0, 1))
             obs['image_A'] = image_A
         obs['image_B'] = image_B
-        if self.duplicate_view:
-            obs['image_B_224'] = image_B_copy
+
         if self.force_mod:
             obs['force'] = force_torque_data
         obs['agent_pos'] = agent_pos_10d
@@ -707,8 +710,7 @@ class EvaluateRealRobot:
                     images_A = np.stack([x['image_A'] for x in obs_deque])
 
                 images_B = np.stack([x['image_B'] for x in obs_deque])
-                if self.duplicate_view:
-                    image_224 = np.stack([x['image_B_224'] for x in obs_deque])
+
                 if force_mod:
                     force_obs = np.stack([x['force'] for x in obs_deque])
 
@@ -727,8 +729,7 @@ class EvaluateRealRobot:
                 nimages_second_view = images_B
                 # device transfer
                 nimages_second_view = torch.from_numpy(nimages_second_view).to(device, dtype=torch.float32)
-                if self.duplicate_view:
-                    nimages_224 = torch.from_numpy(image_224).to(device, dtype=torch.float32)
+
                 force_feature = None
                 if force_mod:
                     nforce_observation = torch.from_numpy(normalized_force_data).to(device, dtype=torch.float32)
@@ -743,8 +744,6 @@ class EvaluateRealRobot:
                     if not self.single_view:
                         image_features_second_view = ema_nets['vision_encoder2'](nimages) # previously trained one vision_encoder 1
                     # (2,512)
-                    if self.duplicate_view:
-                        image_features_second_view = ema_nets['vision_encoder2'](nimages_224) # previously trained one vision_encoder 1
 
                     if not cross_attn:
                         image_features = ema_nets['vision_encoder'](nimages_second_view)
@@ -761,17 +760,6 @@ class EvaluateRealRobot:
                         obs_features = torch.cat([image_features, nagent_poses], dim=-1)
                     elif not force_mod and not single_view:
                         obs_features = torch.cat([image_features_second_view, image_features, nagent_poses], dim=-1)
-                    elif single_view and cross_attn and self.duplicate_view:
-                        if self.hybrid:
-                            obs_features = torch.cat([joint_features, image_features_second_view, nforce_observation, nagent_poses], dim=-1)
-                            print(f'force obeservation : {nforce_observation}')
-                        else:
-                            obs_features = torch.cat([joint_features, image_features_second_view , nagent_poses], dim=-1)
-                    elif not single_view and cross_attn and not self.duplicate_view:
-                        if self.hybrid:
-                            obs_features = torch.cat([joint_features, image_features_second_view, nforce_observation, nagent_poses], dim=-1)
-                        else:
-                            obs_features = torch.cat([joint_features, image_features_second_view, nagent_poses], dim=-1)
                     else:
                         print("Check your configuration for training")
 
@@ -891,7 +879,6 @@ def main(cfg: DictConfig):
                                             force_encode = cfg.model_config.force_encode, 
                                             cross_attn = cfg.model_config.cross_attn, 
                                             hybrid = cfg.model_config.cross_attn,
-                                            duplicate_view = cfg.model_config.duplicate_view,
                                             crop = cfg.model_config.crop)
         eval_real_robot.inference()
         ######## This block is for Visualizing if in virtual environment ###### 

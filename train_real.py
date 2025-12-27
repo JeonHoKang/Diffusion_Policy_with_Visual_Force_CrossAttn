@@ -7,16 +7,29 @@ import torch
 import torch.nn as nn
 import os
 import matplotlib.pyplot as plt
-
+import json
 torch.cuda.empty_cache()
-
+from torch.utils.data import ConcatDataset
 import hydra
 from omegaconf import DictConfig
+from real_robot_dataset import RealRobotDataSet
 
-# Make sure Crop is all there
-@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop")
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
+    
+
+@hydra.main(version_base=None, config_path="config", config_name="resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid")
 def train_Real_Robot(cfg: DictConfig):
+    dataset_path = cfg.model_config.dataset_path
+    action_dim  = cfg.model_config.action_dim
+    pred_horizon = cfg.model_config.pred_horizon
+    obs_horizon  = cfg.model_config.obs_horizon
+    action_horizon = cfg.model_config.action_horizon
     continue_training=  cfg.model_config.continue_training
+    batch_size = cfg.model_config.batch_size
     start_epoch = cfg.model_config.start_epoch
     end_epoch= cfg.model_config.end_epoch
     encoder:str = cfg.model_config.encoder
@@ -27,7 +40,7 @@ def train_Real_Robot(cfg: DictConfig):
     force_encoder = cfg.model_config.force_encoder
     cross_attn = cfg.model_config.cross_attn
     hybrid = cfg.model_config.hybrid
-    duplicate_view = cfg.model_config.duplicate_view
+    augment = cfg.model_config.augment
     crop = cfg.model_config.crop
 
     if force_encode:
@@ -35,9 +48,83 @@ def train_Real_Robot(cfg: DictConfig):
     if cross_attn:
         force_encode = False
 
-    print(f"Training model with vision {cfg.name}")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")   # Apple Silicon (Metal)
+    else:
+        device = torch.device("cpu")
+
+    print("Using device:", device)
+
+
+    if augment:
+        real_robot_dataset = RealRobotDataSet(
+                                            dataset_path,
+                                            pred_horizon,
+                                            obs_horizon,
+                                            action_horizon,
+                                            force_mod,
+                                            single_view,
+                                            augment = False,
+                                            crop = crop
+                                            )
+        
+        real_robot_dataset_augmented = RealRobotDataSet(
+            dataset_path=dataset_path,
+            pred_horizon=pred_horizon,
+            obs_horizon=obs_horizon,
+            action_horizon=action_horizon,
+            force_mod = force_mod,
+            single_view=single_view,
+            augment = True,
+            crop = crop
+        )
+        dataset = ConcatDataset([real_robot_dataset, real_robot_dataset_augmented])
+
+    else:
+        real_robot_dataset = RealRobotDataSet(
+                                            dataset_path,
+                                            pred_horizon,
+                                            obs_horizon,
+                                            action_horizon,
+                                            force_mod,
+                                            single_view,
+                                            augment = False,
+                                            crop = crop
+                                            )
+        dataset = real_robot_dataset
+        # create dataloader
+
+    stats = real_robot_dataset.stats
+
+    # Save the stats to a file
+    with open(f'stats_{encoder}_{action_def}_vn.json', 'w') as f:
+        json.dump(stats, f, cls=NumpyEncoder)
+        print("stats saved")
+
+    # self.dataloader = data_loader_augmented
+    # self.data_loader_augmented = data_loader_augmented
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=4,
+        shuffle=True,
+        # accelerate cpu-gpu transfer
+        pin_memory=True,
+        # don't kill worker process afte each epoch
+        persistent_workers=True,
+    )
+
+
     # # for this demo, we use DDPMScheduler with 100 diffusion iterations
-    diffusion = DiffusionPolicy_Real(encoder= encoder,
+    diffusion = DiffusionPolicy_Real(
+                                    action_dim  = action_dim,
+                                    pred_horizon = pred_horizon,
+                                    obs_horizon  = obs_horizon,
+                                    action_horizon = action_horizon,
+                                    batch_size = batch_size,
+                                    encoder= encoder,
                                     action_def = action_def, 
                                     force_mod = force_mod, 
                                     single_view= single_view, 
@@ -45,18 +132,8 @@ def train_Real_Robot(cfg: DictConfig):
                                     force_encoder=force_encoder,
                                     cross_attn=cross_attn,
                                     hybrid = hybrid,
-                                    duplicate_view = duplicate_view,
                                     crop = crop)
-    data_name = diffusion.data_name
-
-    device = torch.device('cuda')
     _ = diffusion.nets.to(device)
-
-    #@markdown ### **Training**
-    #@markdown
-    #@markdown Takes about 2.5 hours. If you don't want to wait, skip to the next cell
-    #@markdown to load pre-trained weights
-
 
     # Exponential Moving Average
     # accelerates training and improves stability
@@ -64,7 +141,8 @@ def train_Real_Robot(cfg: DictConfig):
     ema = EMAModel(
         parameters=diffusion.nets.parameters(),
         power=0.75)
-    checkpoint_dir = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/checkpoints"
+    
+    checkpoint_dir = "/"
     # To continue t raining load and set the start epoch
     if continue_training:
         start_epoch = 1500
@@ -78,14 +156,14 @@ def train_Real_Robot(cfg: DictConfig):
     # Note that EMA parametesr are not optimized
     optimizer = torch.optim.AdamW(
         params=diffusion.nets.parameters(),
-        lr=2e-4, weight_decay=1e-6)
+        lr=1e-4, weight_decay=1e-6)
 
     # Cosine LR schedule with linear warmup
     lr_scheduler = get_scheduler(
         name='cosine',
         optimizer=optimizer,
         num_warmup_steps=500,
-        num_training_steps=len(diffusion.dataloader) * end_epoch
+        num_training_steps=len(dataloader) * end_epoch
     )
     # Log loss for epochs
     
@@ -95,19 +173,9 @@ def train_Real_Robot(cfg: DictConfig):
         # epoch
         for epoch_idx in tglobal:
             epoch_loss = list()
-            ### THis is for seperately training augmented and non augmented data
-            # # Decide which data loader to use for this epoch
-            # if epoch_idx % 2 == 0:
-            #     # Use normal data loader every other epoch
-            #     current_loader = diffusion.data_loader
-            #     tglobal.set_postfix({'Data': 'Normal'})
-            # else:
-            #     # Use augmented data loader on alternate epochs
-            #     current_loader = diffusion.data_loader_augmented
-            #     tglobal.set_postfix({'Data': 'Augmented'})
-            current_loader = diffusion.dataloader
+            # current_loader = diffusion.dataloader
             # batch loop
-            with tqdm(current_loader, desc='Batch', leave=False) as tepoch:
+            with tqdm(dataloader, desc='Batch', leave=False) as tepoch:
                 for nbatch in tepoch:
                     # data normalized in dataset
                     # device transfer
@@ -115,8 +183,7 @@ def train_Real_Robot(cfg: DictConfig):
 
                     if not single_view:
                         nimage_second_view = nbatch['image2'][:,:diffusion.obs_horizon].to(device)
-                    if duplicate_view:
-                        nimage_duplicate = nbatch['duplicate_image'][:,:diffusion.obs_horizon].to(device)
+                    
                     if force_mod:
                         nforce = nbatch['force'][:,:diffusion.obs_horizon].to(device)
                     else:
@@ -155,14 +222,8 @@ def train_Real_Robot(cfg: DictConfig):
                     # plt.show()
 
                     if encoder == "resnet":
-                        if duplicate_view:
-                            image_input = nimage_duplicate.flatten(end_dim=1)
-                        else:
                             image_input = nimage.flatten(end_dim=1)
                     elif encoder == "viT":
-                        if duplicate_view:
-                            image_input = nimage_duplicate
-                        else:
                             image_input = nimage
                     B = nagent_pos.shape[0]
                     if not cross_attn:
@@ -179,12 +240,7 @@ def train_Real_Robot(cfg: DictConfig):
                             nimage_second_view.flatten(end_dim=1))
                         image_features_second_view = image_features_second_view.reshape(
                             *nimage_second_view.shape[:2],-1)
-                    if duplicate_view:
-                        # encoder vision features
-                        image_features_duplicate = diffusion.nets['vision_encoder2'](
-                            nimage.flatten(end_dim=1))
-                        image_features_duplicate = image_features_duplicate.reshape(
-                            *nimage.shape[:2],-1)                    
+              
                     if force_mod and force_encode:
                         force_feature = diffusion.nets['force_encoder'](nforce)
                         # force_feature = force_feature.reshape(
@@ -217,12 +273,6 @@ def train_Real_Robot(cfg: DictConfig):
                             obs_features = torch.cat([joint_features, image_features_second_view, force_feature, nagent_pos], dim=-1)
                         else:
                             obs_features = torch.cat([joint_features, image_features_second_view, nagent_pos], dim=-1)
-                    elif single_view and duplicate_view and cross_attn:
-                        # TODO: If hybrid is true, then add force feature on top of it.
-                        if hybrid:
-                            obs_features = torch.cat([joint_features, image_features_duplicate, force_feature, nagent_pos], dim=-1)
-                        else:
-                            obs_features = torch.cat([joint_features, image_features_duplicate, nagent_pos], dim=-1)
                     else:
                         print("Check your configuration for training")
 
@@ -272,10 +322,10 @@ def train_Real_Robot(cfg: DictConfig):
             tglobal.set_postfix(loss=avg_loss)
             
             # Save checkpoint every 10 epochs or at the end of training
-            if epoch_idx > 950:
-                if (epoch_idx + 1) % 200 == 0 or (epoch_idx + 1) == end_epoch:
+            if epoch_idx > 100:
+                if (epoch_idx + 1) % 100 == 0 or (epoch_idx + 1) == end_epoch:
                     # Save only the state_dict of the model, including relevant submodules
-                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{data_name}_{epoch_idx+1}_bench.pth'))
+                    torch.save(diffusion.nets.state_dict(),  os.path.join(checkpoint_dir, f'{cfg.name}_{epoch_idx+1}_bench.pth'))
     # Plot the loss after training is complete
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, end_epoch + 1), epoch_losses, marker='o', label='Training Loss')

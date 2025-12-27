@@ -2,19 +2,25 @@
 defaults:
   - _self_
 
-name:  resnet_delta_no_force_single_view_force_no_encode
+name:  resnet_delta_no_force_single_view_baseline
 
 model_config:
+  dataset_path: ""
+  action_dim : 9
+  pred_horizon : 16
+  obs_horizon : 2
+  action_horizon : 8
   continue_training: False
+  batch_size: 64
   start_epoch: 0
   end_epoch: 3000
   encoder: "resnet"
   action_def: "delta"
-  force_mod: True
+  force_mod:  True
   single_view: True
   force_encode: False
   force_encoder: "Linear"
   cross_attn: False
   hybrid: False
-  duplicate_view: False
-  crop: 1000 # 128
+  augment: False
+  crop: 98 # 128

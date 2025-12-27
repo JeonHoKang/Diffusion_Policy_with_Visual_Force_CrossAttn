@@ -7,15 +7,13 @@ import torch
 import torch.nn as nn
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 import os
-from data_util import RealRobotDataSet
 from train_utils import train_utils
 from data_util import center_crop
 import json
-from transformer_obs_encoder import SimpleRGBObsEncoder
 import timm
-from torchvision import transforms
-from torchvision.datasets import ImageFolder
-from torch.utils.data import ConcatDataset
+
+# from torchvision import transforms
+# from torchvision.datasets import ImageFolder
 
 #@markdown ### **Network**
 #@markdown
@@ -48,13 +46,12 @@ def cross_center_crop(images, crop_height, crop_width):
     return cropped_images
 
 class ForceEncoder(nn.Module):
-    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, force_encoder = "CNN", cross_attn = False, im_encoder = "resnet", train = True):
+    def __init__(self, force_dim, hidden_dim, batch_size, obs_horizon, force_encoder = "CNN", cross_attn = False, im_encoder = "resnet"):
         super(ForceEncoder, self).__init__()
         self.cross_attn = cross_attn
         self.batch_size = batch_size
         self.obs_horizon = obs_horizon
         self.force_encoder = force_encoder
-        self.train = train
         if im_encoder == "viT":
             force_hidden_dim = 768
         else:
@@ -105,38 +102,32 @@ class ForceEncoder(nn.Module):
         self.projection_layer = nn.Linear(64 * force_dim, hidden_dim)
 
     def forward(self, x):
-        if self.train:
-            B,T,D = x.shape
-            force_input = x.reshape(B*T, D)
-            force_input = force_input.unsqueeze(1)
-        else:
-            force_input = x.unsqueeze(1)  # Reshape to [batch_size, 1, input_dim] => [64, 1, 4]
+        # x: [B, T, D]
+        B, T, D = x.shape
+        force_input = x.reshape(B * T, D).unsqueeze(1)  # [B*T, 1, D]
+
         if self.force_encoder == "CNN":
             latent_vector = self.conv_encoder(force_input)
-            latent_vector = self.projection_layer(latent_vector)  # Shape: [batch_size, 512]
+            latent_vector = self.projection_layer(latent_vector)
         elif self.force_encoder == "Transformer":
-            embedded_force = self.force_embedding(force_input)  # Shape: [seq_len, batch_size, 512]
-            latent_vector = self.transformer_encoder(embedded_force)  # Shape: [batch_size, embed_dim]
-            # latent_vector = self.fc(encoded_force.mean(dim=0))  # Get the final 512-dimensional output
+            embedded_force = self.force_embedding(force_input)
+            latent_vector = self.transformer_encoder(embedded_force)
         elif self.force_encoder == "MLP":
             latent_vector = self.fc_encoder(force_input)
         elif self.force_encoder == "Linear":
-            projected_force = self.force_projection(force_input)
-            latent_vector = projected_force
-        if self.train:
-            latent_vector = latent_vector.reshape(int(B), self.obs_horizon, -1)
-        else:
-            latent_vector = latent_vector.squeeze(1)
+            latent_vector = self.force_projection(force_input)
+
+        latent_vector = latent_vector.reshape(B, T, -1)
         return latent_vector
+
     
 class CrossAttentionFusion(nn.Module):
-    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, force_encoder = "CNN", im_encoder = "resnet", train=True):
+    def __init__(self, image_dim, force_dim, hidden_dim= None, batch_size = 48, obs_horizon = 2, force_encoder = "CNN", im_encoder = "resnet"):
         super(CrossAttentionFusion, self).__init__()
         self.obs_horizon = obs_horizon
         self.batch_size = batch_size
         self.im_encoder = im_encoder
         C,H,W = image_dim
-        self.train = train
         # Image feature extraction
         # Image feature extraction layers
         if im_encoder == "CNN":
@@ -154,8 +145,7 @@ class CrossAttentionFusion(nn.Module):
         elif im_encoder == "resnet":
             self.image_encoder = train_utils().get_resnet("resnet18", weights= None)
             self.image_encoder = train_utils().replace_bn_with_gn(self.image_encoder)
-        elif im_encoder == "viT":
-            self.image_encoder  = SimpleRGBObsEncoder()
+
 
             # train_utils().replace_bn_with_gn(self.image_encoder)
         # Dynamically calculate the image_dim after convolution and pooling
@@ -172,7 +162,7 @@ class CrossAttentionFusion(nn.Module):
         self.image_fc = nn.Linear(image_dim, hidden_dim)
 
         # Force feature extraction
-        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True, im_encoder = im_encoder, train = train)
+        self.force_encoder = ForceEncoder(force_dim=force_dim, hidden_dim=hidden_dim, batch_size = batch_size, obs_horizon = obs_horizon, force_encoder=force_encoder, cross_attn=True, im_encoder = im_encoder)
         # Cross-attention layers
         self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4)
 
@@ -184,39 +174,42 @@ class CrossAttentionFusion(nn.Module):
         )
 
     def forward(self, image_input, force_input):
-        # Encode image and force data
-        current_batch_size = image_input.size(0)
+        batch_size = image_input.size(0)
+
         if self.im_encoder == "viT":
             image_input = cross_center_crop(image_input, 224, 224)
+
         image_features = self.image_encoder(image_input)
 
-        # image_features = self.image_fc(image_features)
-        if self.im_encoder != "viT" and self.train:
-            image_features = image_features.view(int(current_batch_size/2), self.obs_horizon, -1)
-        if self.train:
-            image_features = image_features.permute(1, 0, 2)  # Correct shape: (num_images, batch_size, hidden_dim)
+        # If you're packing [B * obs_horizon, ...] → [B, obs_horizon, feat_dim]
+        if self.im_encoder != "viT":
+            image_features = image_features.view(
+                batch_size // self.obs_horizon,
+                self.obs_horizon,
+                -1
+            )
 
-        # Reshape for attention: (sequence_length, batch_size, hidden_dim)
+        # (T_img, B, D)
+        image_features = image_features.permute(1, 0, 2)
 
         force_features = self.force_encoder(force_input)
-        if self.train:
-            # force_features = force_features.view(batch_size, obs_horizon, -1)
-            force_features = force_features.permute(1, 0, 2)  # Correct shape: (num_forces, batch_size, hidden_dim)
+        # (T_force, B, D)
+        force_features = force_features.permute(1, 0, 2)
 
-        # Cross-attention operation
-        attn_output, _ = self.attention(query=force_features, key=image_features, value=image_features)
-        if self.train:
-            attn_output = attn_output.permute(1, 0, 2)  # Shape: (batch_size, num_forces, hidden_dim)
+        attn_output, _ = self.attention(
+            query=force_features,
+            key=image_features,
+            value=image_features,
+        )
 
-        # Generate the fused embedding
+        # (B, T_force, D)
+        attn_output = attn_output.permute(1, 0, 2)
+
         joint_embedding = self.fusion_layer(attn_output)
         return joint_embedding
 
-class NumpyEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super(NumpyEncoder, self).default(obj)
+
+
     
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
@@ -480,12 +473,15 @@ def get_filename(input_string):
         return ""
 
 
-dataset_path = "/home/jeon/jeon_ws/diffusion_policy/src/diffusion_cam/RAL_AAA+D_419.zarr.zip"
 
 #@markdown ### **Network Demo**
 class DiffusionPolicy_Real:     
     def __init__(self,
-                train=True, 
+                action_dim  = 9,
+                pred_horizon = 16,
+                obs_horizon  = 2,
+                action_horizon = 8,
+                batch_size = 32,
                 encoder = "resnet", 
                 action_def = "delta", 
                 force_mod:bool = False, 
@@ -494,19 +490,14 @@ class DiffusionPolicy_Real:
                 force_encoder = "CNN",
                 cross_attn: bool = False,
                 hybrid: bool = False,
-                duplicate_view = False,
                 crop: int = 1000,
                 augment = True):
         # action dimension should also correspond with the state dimension (x,y,z, x, y, z, w)
-        action_dim = 9
-        # parameters
-        pred_horizon = 16
-        obs_horizon = 2
-        action_horizon = 8
+
         #|o|o|                             observations: 2
         #| |a|a|a|a|a|a|a|a|               actions executed: 8
         #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
-        batch_size = 100
+        batch_size = batch_size
         Transformer_bool = None
         modality = "without_force"
         view = "dual_view"
@@ -522,10 +513,6 @@ class DiffusionPolicy_Real:
         if not single_view:
             vision_encoder2 = train_utils().get_resnet('resnet18')
             vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
-        if duplicate_view:
-            vision_encoder2 = train_utils().get_resnet('resnet18')
-            vision_encoder2 = train_utils().replace_bn_with_gn(vision_encoder2)
-
         if force_mod and force_encode:
             if encoder == "viT":
                 hidden_dim_force = 768
@@ -534,8 +521,7 @@ class DiffusionPolicy_Real:
             force_encoder = ForceEncoder(4, hidden_dim_force, batch_size = batch_size,
                                           obs_horizon = obs_horizon, 
                                           force_encoder= force_encoder, 
-                                          cross_attn=cross_attn,
-                                          train=train)
+                                          cross_attn=cross_attn)
 
         if cross_attn and force_mod:
             if encoder == "viT":
@@ -550,18 +536,13 @@ class DiffusionPolicy_Real:
             joint_encoder = CrossAttentionFusion(image_dim, 4, cross_hidden_dim, batch_size = batch_size, 
                                                  obs_horizon=obs_horizon, 
                                                  force_encoder = force_encoder, 
-                                                 im_encoder = encoder,
-                                                 train = train)
+                                                 im_encoder = encoder)
         else:
             if encoder == "resnet":
                 print("resnet")
                 vision_encoder = train_utils().get_resnet('resnet18')
                 vision_encoder = train_utils().replace_bn_with_gn(vision_encoder)
 
-            elif encoder == "Transformer":
-                Transformer_bool = True
-                print("Imported Transformer clip model")
-                vision_encoder = SimpleRGBObsEncoder()
         # IMPORTANT!
         # replace all BatchNorm with GroupNorm to work with EMA
         # performance will tank if you forget to do this!
@@ -586,90 +567,11 @@ class DiffusionPolicy_Real:
         # observation feature has 514 dims in total per step
         if force_mod and not cross_attn:
             obs_dim = vision_feature_dim + force_feature_dim  + lowdim_obs_dim
-        elif force_mod and cross_attn and not duplicate_view:
-            obs_dim = vision_feature_dim + lowdim_obs_dim
-        elif force_mod and cross_attn and duplicate_view:
-            obs_dim = vision_feature_dim * 2 + lowdim_obs_dim
         else:            
             obs_dim = vision_feature_dim + lowdim_obs_dim
         if hybrid:
             obs_dim += 4
 
-        data_name = get_filename(dataset_path)
-
-        if train:
-            # create dataset from file
-            dataset = RealRobotDataSet(
-                dataset_path=dataset_path,
-                pred_horizon=pred_horizon,
-                obs_horizon=obs_horizon,
-                action_horizon=action_horizon,
-                Transformer= Transformer_bool,
-                force_mod = force_mod,
-                single_view=single_view,
-                augment = False,
-                duplicate_view = duplicate_view,
-                crop = crop
-            )
-            # save training data statistics (min, max) for each dim
-
-
-
-
-            if augment:
-                dataset_augmented = RealRobotDataSet(
-                    dataset_path=dataset_path,
-                    pred_horizon=pred_horizon,
-                    obs_horizon=obs_horizon,
-                    action_horizon=action_horizon,
-                    Transformer= Transformer_bool,
-                    force_mod = force_mod,
-                    single_view=single_view,
-                    augment = True,
-                    duplicate_view = duplicate_view,
-                    crop = crop
-                )
-
-
-                combined_dataset = ConcatDataset([dataset, dataset_augmented])
-            
-                # DataLoader for combined dataset
-                data_loader_combined = torch.utils.data.DataLoader(
-                    combined_dataset,
-                    batch_size=batch_size,
-                    num_workers=4,
-                    shuffle=True,  # Shuffle to mix normal and augmented data
-                    pin_memory=True,
-                    persistent_workers=True
-                )
-                self.dataloader = data_loader_combined
-                batch = next(iter(data_loader_combined))
-                stats = dataset_augmented.stats
-
-            else:
-                # create dataloader
-                dataloader = torch.utils.data.DataLoader(
-                    dataset,
-                    batch_size=batch_size,
-                    num_workers=4,
-                    shuffle=True,
-                    # accelerate cpu-gpu transfer
-                    pin_memory=True,
-                    # don't kill worker process afte each epoch
-                    persistent_workers=True,
-                )
-                self.dataloader = dataloader
-                batch = next(iter(dataloader))
-                stats = dataset.stats
-
-           # Save the stats to a file
-            with open(f'stats_{data_name}_{encoder}_{action_def}_{modality}_vn.json', 'w') as f:
-                json.dump(stats, f, cls=NumpyEncoder)
-                print("stats saved")
-
-            # self.dataloader = data_loader_augmented
-            # self.data_loader_augmented = data_loader_augmented
-            self.stats = stats
 
         #### For debugging purposes uncomment
         # import matplotlib.pyplot as plt
@@ -701,76 +603,54 @@ class DiffusionPolicy_Real:
         #     print("The images are different.")
         ######### End ########
             # visualize data in batch
-            print("batch['image'].shape:", batch['image'].shape)
-            if not single_view:
-                print("batch[image2].shape", batch["image2"].shape)
-            if duplicate_view:
-                print("batch[image_duplicate].shape", batch["duplicate_image"].shape)
+            # batch = next(iter(dataloader))
 
-            print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
+            # print("batch['image'].shape:", batch['image'].shape)
+            # if not single_view:
+            #     print("batch[image2].shape", batch["image2"].shape)
+            # print("batch['agent_pos'].shape:", batch['agent_pos'].shape)
             
-            if force_mod:
-                print("batch['force'].shape:", batch['force'].shape)
+            # if force_mod:
+            #     print("batch['force'].shape:", batch['force'].shape)
 
-            print("batch['action'].shape", batch['action'].shape)
-            self.batch = batch
+            # print("batch['action'].shape", batch['action'].shape)
+            # self.batch = batch
 
         # create network object
         noise_pred_net = ConditionalUnet1D(
             input_dim=action_dim,
             global_cond_dim=obs_dim*obs_horizon
         )
-        if single_view and not force_mod and not force_encode and not cross_attn:
-            # the final arch has 2 parts
+        # Sanity checks on flags
+        if cross_attn and force_encode:
+            raise ValueError("cross_attn and force_encode cannot both be True.")
+        # Case 1: single-view, no cross_attn, no force_encode
+        # (vision only; force_mod may be True or False, but modulation is handled inside the modules)
+        if single_view and not cross_attn and not force_encode:
             nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder,
-                'noise_pred_net': noise_pred_net
+                "vision_encoder": vision_encoder,
+                "noise_pred_net": noise_pred_net,
             })
-        elif single_view and force_mod and not force_encode and not cross_attn:
-            # the final arch has 2 parts
+
+        # Case 2: single-view with force encoder (no cross_attn)
+        elif single_view and force_encode and not cross_attn:
             nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder,
-                'noise_pred_net': noise_pred_net
+                "vision_encoder": vision_encoder,
+                "force_encoder": force_encoder,
+                "noise_pred_net": noise_pred_net,
             })
-        elif single_view and force_encode:
-            # the final arch has 2 parts
+
+        # Case 3: single-view with cross-attention (no force_encode)
+        elif single_view and cross_attn and not force_encode:
             nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder,
-                'force_encoder': force_encoder,
-                'noise_pred_net': noise_pred_net
-            })   
-        elif not single_view and force_encode:
-            nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder,
-                'vision_encoder2': vision_encoder2,
-                'force_encoder': force_encoder,
-                'noise_pred_net': noise_pred_net
+                "cross_attn_encoder": joint_encoder,  # e.g., your visual+force fusion module
+                "noise_pred_net": noise_pred_net,
             })
-        elif not single_view and not force_encode and not cross_attn:
-            nets = nn.ModuleDict({
-                'vision_encoder': vision_encoder,
-                'vision_encoder2': vision_encoder2,
-                'noise_pred_net': noise_pred_net
-            })
-        elif single_view and cross_attn and not duplicate_view:
-            nets = nn.ModuleDict({
-                'cross_attn_encoder': joint_encoder,
-                'noise_pred_net': noise_pred_net
-            })
-        elif not single_view and cross_attn and not force_encode:
-            nets = nn.ModuleDict({
-                'cross_attn_encoder': joint_encoder,
-                'vision_encoder2': vision_encoder2,
-                'noise_pred_net': noise_pred_net
-            }) 
-        elif single_view and duplicate_view and cross_attn and not force_encode:
-            nets = nn.ModuleDict({
-                'cross_attn_encoder': joint_encoder,
-                'vision_encoder2': vision_encoder2,
-                'noise_pred_net': noise_pred_net
-            }) 
-        elif cross_attn and force_encode:
-            print("Cross attn and force encode cannot be True at the same time")
+        else:
+            raise ValueError(
+                f"Invalid configuration: single_view={single_view}, "
+                f"force_mod={force_mod}, force_encode={force_encode}, cross_attn={cross_attn}"
+            )
 
             
         # diffusion iteration
@@ -793,8 +673,6 @@ class DiffusionPolicy_Real:
         self.num_diffusion_iters = num_diffusion_iters
         self.obs_horizon = obs_horizon
         self.obs_dim = obs_dim
-        if not single_view or duplicate_view:
-            self.vision_encoder2 = vision_encoder2
         if not cross_attn:
             self.vision_encoder = vision_encoder
         if force_encode:
@@ -804,15 +682,16 @@ class DiffusionPolicy_Real:
         self.pred_horizon = pred_horizon
         self.lowdim_obs_dim = lowdim_obs_dim
         self.action_dim = action_dim
-        self.data_name = data_name
 
 
 
 def test():
+    from data_util import RealRobotDataSet
+
     # create dataset from file
     obs_horizon = 2 
     dataset = RealRobotDataSet(
-        dataset_path=dataset_path,
+        dataset_path="",
         pred_horizon=16,
         obs_horizon=obs_horizon,
         action_horizon=8,

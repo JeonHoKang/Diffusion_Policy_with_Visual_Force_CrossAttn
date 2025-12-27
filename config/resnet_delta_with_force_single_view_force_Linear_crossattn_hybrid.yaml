@@ -2,10 +2,16 @@
 defaults:
   - _self_
 
-name: resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid_crop98
+name: resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid
 
 model_config:
+  dataset_path: """
+  action_dim : 9
+  pred_horizon : 16
+  obs_horizon : 2
+  action_horizon : 8
   continue_training: False
+  batch_size: 32
   start_epoch: 0
   end_epoch: 3000
   encoder: "resnet"
@@ -16,5 +22,6 @@ model_config:
   force_encoder: "Linear"
   cross_attn: True
   hybrid: True
-  duplicate_view: True
+  augment: True
   crop: 98 # 128
+  

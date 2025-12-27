@@ -1,13 +1,21 @@
-torch==1.13.1 
-torchvision==0.14.1 
-diffusers==0.18.2
+accelerate
+torch==2.8.0 
+torchvision==0.23.0
+diffusers==0.31.0
+tokenizers==0.20.1
 scikit-image==0.19.3 
 scikit-video==1.1.11 
-zarr==2.12.0 
-numcodecs==0.10.2
-pygame==2.1.2 
+zarr==2.15.0
+numcodecs==0.11.0
+# pygame==2.1.2 
 pymunk==6.2.1 
 gym==0.26.2 
 shapely==1.8.4
 opencv-python
 gdown
+timm
+huggingface-hub==0.26.2 
+matplotlib
+hydra-core
+numpy<2
+configs
