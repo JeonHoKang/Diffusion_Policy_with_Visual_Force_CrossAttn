@@ -5,7 +5,7 @@ defaults:
 name: resnet_delta_with_force_single_view_force_Linear_crossattn_hybrid
 
 model_config:
-  dataset_path: """
+  dataset_path: ""
   action_dim : 9
   pred_horizon : 16
   obs_horizon : 2
